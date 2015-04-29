@@ -4,7 +4,6 @@ import (
 	"github.com/lomik/go-carbon/points"
 	//"github.com/lomik/go-whisper"
 
-	"github.com/benbjohnson/clock"
 	"github.com/stretchr/testify/assert"
 	//"github.com/stretchr/testify/mock"
 
@@ -47,8 +46,8 @@ func TestSetWorkers(t *testing.T) {
 }
 
 func TestStat(t *testing.T) {
-	mock := clock.NewMock()
-	app.Clock = mock
+	// mock := clock.NewMock()
+	// app.Clock = mock
 	fixture := Whisper{
 		graphPrefix: "bing.bang.",
 	}
