@@ -46,23 +46,24 @@ func TestSetWorkers(t *testing.T) {
 }
 
 func TestStat(t *testing.T) {
-	// mock := clock.NewMock()
-	// app.Clock = mock
+	assert := assert.New(t)
+	start := time.Now().Unix()
+
 	fixture := Whisper{
 		graphPrefix: "bing.bang.",
 	}
 	fixture.in = make(chan *points.Points)
 	go func() {
 		output := <-fixture.in
-		expected := points.OnePoint(
-			"bing.bang.persister.foo.bar",
-			1.5,
-			0,
-		)
-		assert.Equal(t, output, expected)
+
+		assert.Equal("bing.bang.persister.foo.bar", output.Metric)
+		if assert.NotNil(output.Data) && assert.Equal(1, len(output.Data)) {
+			assert.Equal(1.5, output.Data[0].Value)
+			assert.True(output.Data[0].Timestamp <= time.Now().Unix())
+			assert.True(output.Data[0].Timestamp >= start)
+		}
 	}()
 	fixture.Stat("foo.bar", 1.5)
-
 }
 
 /* This mock and associated test doesn't work quite right... I'm not sure why.
