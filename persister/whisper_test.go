@@ -52,18 +52,27 @@ func TestStat(t *testing.T) {
 	fixture := Whisper{
 		graphPrefix: "bing.bang.",
 	}
-	fixture.in = make(chan *points.Points)
-	go func() {
-		output := <-fixture.in
+	fixture.in = make(chan *points.Points, 2)
+	defer close(fixture.in)
 
-		assert.Equal("bing.bang.persister.foo.bar", output.Metric)
-		if assert.NotNil(output.Data) && assert.Equal(1, len(output.Data)) {
-			assert.Equal(1.5, output.Data[0].Value)
-			assert.True(output.Data[0].Timestamp <= time.Now().Unix())
-			assert.True(output.Data[0].Timestamp >= start)
-		}
-	}()
 	fixture.Stat("foo.bar", 1.5)
+
+	output := <-fixture.in
+
+	assert.Equal("bing.bang.persister.foo.bar", output.Metric)
+	if assert.NotNil(output.Data) && assert.Equal(1, len(output.Data)) {
+		assert.Equal(1.5, output.Data[0].Value)
+		assert.True(output.Data[0].Timestamp <= time.Now().Unix())
+		assert.True(output.Data[0].Timestamp >= start)
+	}
+
+	// check empty
+	select {
+	case <-fixture.in:
+		assert.Fail("Received more than one message")
+	default:
+	}
+
 }
 
 /* This mock and associated test doesn't work quite right... I'm not sure why.
