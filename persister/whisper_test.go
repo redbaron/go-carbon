@@ -5,7 +5,6 @@ import (
 	//"github.com/lomik/go-whisper"
 
 	"github.com/stretchr/testify/assert"
-	//"github.com/stretchr/testify/mock"
 
 	"fmt"
 	"math/rand"
@@ -74,37 +73,6 @@ func TestStat(t *testing.T) {
 	}
 
 }
-
-/* This mock and associated test doesn't work quite right... I'm not sure why.
-
-type TestWhisperFactory struct {
-	mock.Mock
-}
-
-func (o TestWhisperFactory) Open(path string) (w *whisper.Whisper, err error) {
-	args := o.Called(path)
-	return args.Get(0).(*whisper.Whisper), args.Error(1)
-}
-
-func (o TestWhisperFactory) Create(path string, retentions whisper.Retentions, aggregationMethod whisper.AggregationMethod, xFilesFactor float32) (w *whisper.Whisper, err error) {
-	args := o.Called(path, retentions, aggregationMethod, xFilesFactor)
-	return args.Get(0).(*whisper.Whisper), args.Error(1)
-}
-
-func TestStore(t *testing.T) {
-	factory := TestWhisperFactory{}
-	app.Whisper = &factory
-	inchan := make(chan *points.Points)
-	schemas := WhisperSchemas{}
-	aggrs := WhisperAggregation{}
-	fixture := NewWhisper("foo", &schemas, &aggrs, inchan)
-	p := points.OnePoint("foo.bar", 1.5, 0)
-	factory.On("Open", "foo/foo/bar.wsp").Return(&whisper.Whisper{}, nil)
-	fixture.store(p)
-	// This fails, for unknown reasons
-	//factory.AssertExpectations(t)
-}
-*/
 
 // I don't see a good way to isolate this unit from store
 func TestWorker(t *testing.T) {
