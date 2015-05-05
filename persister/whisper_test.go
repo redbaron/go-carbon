@@ -131,16 +131,6 @@ func TestShuffler(t *testing.T) {
 	randomPoints(runlength, in)
 	fixture.exit <- true
 	dotest <- true
-
-}
-
-func TestDoCheckpoint(t *testing.T) {
-}
-
-func TestStatWorker(t *testing.T) {
-}
-
-func TestStart(t *testing.T) {
 }
 
 func TestStop(t *testing.T) {

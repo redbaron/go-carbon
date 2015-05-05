@@ -27,6 +27,7 @@ type Whisper struct {
 	commited            uint64 // (updateOperations << 32) + commitedPoints
 	created             uint32 // counter
 	maxUpdatesPerSecond int
+	statInterval        time.Duration
 }
 
 // NewWhisper create instance of Whisper
@@ -39,6 +40,7 @@ func NewWhisper(rootPath string, schemas *WhisperSchemas, aggregation *WhisperAg
 		workersCount:        1,
 		rootPath:            rootPath,
 		maxUpdatesPerSecond: 0,
+		statInterval:        time.Minute,
 	}
 }
 
@@ -47,7 +49,7 @@ func (p *Whisper) SetGraphPrefix(prefix string) {
 	p.graphPrefix = prefix
 }
 
-// SetMaxUpdatesPerSecond enable throttling
+// SetMaxUpdatesPerSecond enables throttling
 func (p *Whisper) SetMaxUpdatesPerSecond(maxUpdatesPerSecond int) {
 	p.maxUpdatesPerSecond = maxUpdatesPerSecond
 }
@@ -55,6 +57,11 @@ func (p *Whisper) SetMaxUpdatesPerSecond(maxUpdatesPerSecond int) {
 // SetWorkers count
 func (p *Whisper) SetWorkers(count int) {
 	p.workersCount = count
+}
+
+// ChangeStatInterval from standart 1 minite to custom
+func (p *Whisper) ChangeStatInterval(newInterval time.Duration) {
+	p.statInterval = newInterval
 }
 
 // Stat sends internal statistics to cache
@@ -174,7 +181,7 @@ func (p *Whisper) doCheckpoint() {
 
 // stat timer
 func (p *Whisper) statWorker() {
-	ticker := time.NewTicker(time.Minute)
+	ticker := time.NewTicker(p.statInterval)
 	defer ticker.Stop()
 
 	for {
