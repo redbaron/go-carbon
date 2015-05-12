@@ -59,8 +59,8 @@ func (p *Whisper) SetWorkers(count int) {
 	p.workersCount = count
 }
 
-// ChangeStatInterval from standart 1 minite to custom
-func (p *Whisper) ChangeStatInterval(newInterval time.Duration) {
+// SetStatInterval from standart 1 minite to custom
+func (p *Whisper) SetStatInterval(newInterval time.Duration) {
 	p.statInterval = newInterval
 }
 
