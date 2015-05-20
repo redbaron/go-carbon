@@ -23,6 +23,7 @@ func TestNewWhisper(t *testing.T) {
 		aggregation:  &aggrs,
 		workersCount: 1,
 		rootPath:     "foo",
+		statInterval: time.Minute,
 	}
 	assert.NotNil(t, output.exit, "Failed to init exit channel")
 	// copy exit channel into out expected struct
