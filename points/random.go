@@ -3,6 +3,7 @@ package points
 import (
 	"math/rand"
 	"strings"
+	"time"
 )
 
 // RandomString generates part of metric name
@@ -63,6 +64,8 @@ func RandomNextName(prev string) string {
 
 // RandomNames generates list of metric names
 func RandomNames(count int) []string {
+	rand.Seed(time.Now().Unix())
+
 	result := []string{}
 	for i := 0; i < count; i++ {
 		if i == 0 {

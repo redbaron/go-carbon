@@ -2,7 +2,6 @@ package persister
 
 import (
 	"io/ioutil"
-	"math/rand"
 	"os"
 	"testing"
 	"time"
@@ -40,7 +39,6 @@ func TestFull(t *testing.T) {
 		p.SetWorkers(16)
 		p.SetStatInterval(time.Hour) // do not autostat. run doCheckpoint manually
 
-		rand.Seed(time.Now().Unix())
 		points.RandomNames(1000)
 
 	})
