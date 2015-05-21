@@ -10,7 +10,7 @@ import (
 	"github.com/lomik/go-carbon/points"
 )
 
-func tmpDir(t *testing.T, callback func(string)) {
+func withDirectory(t *testing.T, callback func(string)) {
 	dir, err := ioutil.TempDir("", "")
 	if err != nil {
 		t.Fatal(err)
@@ -28,7 +28,7 @@ func tmpDir(t *testing.T, callback func(string)) {
 func TestFull(t *testing.T) {
 	// assert := assert.New(t)
 
-	tmpDir(t, func(rootDir string) {
+	withDirectory(t, func(rootDir string) {
 
 		inchan := make(chan *points.Points, 1024)
 		schemas := WhisperSchemas{}
@@ -41,7 +41,7 @@ func TestFull(t *testing.T) {
 		p.SetStatInterval(time.Hour) // do not autostat. run doCheckpoint manually
 
 		rand.Seed(time.Now().Unix())
-		generateMetricNames(1000)
+		points.RandomNames(1000)
 
 	})
 
