@@ -30,16 +30,18 @@ func TestFull(t *testing.T) {
 	withDirectory(t, func(rootDir string) {
 
 		inchan := make(chan *points.Points, 1024)
-		schemas := WhisperSchemas{}
-		aggrs := WhisperAggregation{}
+		schemas := NewWhisperSchemas().add(
+			"default", ".*", "1s:10m", 0,
+		)
+		aggrs := NewWhisperAggregation()
 
-		p := NewWhisper(rootDir, &schemas, &aggrs, inchan)
+		p := NewWhisper(rootDir, schemas, aggrs, inchan)
 
 		p.SetGraphPrefix("carbon.agents.localhost.")
 		p.SetWorkers(16)
 		p.SetStatInterval(time.Hour) // do not autostat. run doCheckpoint manually
 
-		points.RandomNames(1000)
+		// names := points.RandomNames(1000)
 
 	})
 

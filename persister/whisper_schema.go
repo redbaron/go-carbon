@@ -134,6 +134,20 @@ func ReadWhisperSchemas(file string) (*WhisperSchemas, error) {
 	return result, nil
 }
 
+// add has no validations. For internal tests only!
+func (s *WhisperSchemas) add(name string, pattern string, retentions string, priority int64) *WhisperSchemas {
+	item := &whisperSchemaItem{}
+	item.name = name
+	item.pattern, _ = regexp.Compile(pattern)
+	item.retentionStr = retentions
+	item.retentions, _ = ParseRetentionDefs(item.retentionStr)
+	item.priority = int64(priority)<<32 - int64(len(s.Data))
+	s.Data = append(s.Data, item)
+
+	sort.Sort(whisperSchemaItemByPriority(s.Data))
+	return s
+}
+
 // Match find schema for metric
 func (s *WhisperSchemas) match(metric string) *whisperSchemaItem {
 	for _, s := range s.Data {
