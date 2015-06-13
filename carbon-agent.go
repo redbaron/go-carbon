@@ -18,6 +18,7 @@ import (
 	"github.com/BurntSushi/toml"
 	"github.com/Sirupsen/logrus"
 	"github.com/lomik/go-carbon/cache"
+	"github.com/lomik/go-carbon/config"
 	"github.com/lomik/go-carbon/logging"
 	"github.com/lomik/go-carbon/persister"
 	"github.com/lomik/go-carbon/receiver"
@@ -28,30 +29,6 @@ import _ "net/http/pprof"
 
 // Version of go-carbon
 const Version = "0.5.1"
-
-// Duration wrapper time.Duration for TOML
-type Duration struct {
-	time.Duration
-}
-
-var _ toml.TextMarshaler = &Duration{}
-
-// UnmarshalText from TOML
-func (d *Duration) UnmarshalText(text []byte) error {
-	var err error
-	d.Duration, err = time.ParseDuration(string(text))
-	return err
-}
-
-// MarshalText encode text with TOML format
-func (d *Duration) MarshalText() ([]byte, error) {
-	return []byte(d.Duration.String()), nil
-}
-
-// Value return time.Duration value
-func (d *Duration) Value() time.Duration {
-	return d.Duration
-}
 
 type commonConfig struct {
 	User        string `toml:"user"`
@@ -87,10 +64,10 @@ type tcpConfig struct {
 }
 
 type carbonlinkConfig struct {
-	Listen       string    `toml:"listen"`
-	Enabled      bool      `toml:"enabled"`
-	ReadTimeout  *Duration `toml:"read-timeout"`
-	QueryTimeout *Duration `toml:"query-timeout"`
+	Listen       string           `toml:"listen"`
+	Enabled      bool             `toml:"enabled"`
+	ReadTimeout  *config.Duration `toml:"read-timeout"`
+	QueryTimeout *config.Duration `toml:"query-timeout"`
 }
 
 type pprofConfig struct {
@@ -147,10 +124,10 @@ func newConfig() *Config {
 		Carbonlink: carbonlinkConfig{
 			Listen:  "127.0.0.1:7002",
 			Enabled: true,
-			ReadTimeout: &Duration{
+			ReadTimeout: &config.Duration{
 				Duration: 30 * time.Second,
 			},
-			QueryTimeout: &Duration{
+			QueryTimeout: &config.Duration{
 				Duration: 100 * time.Millisecond,
 			},
 		},
