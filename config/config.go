@@ -1,31 +1,55 @@
 package config
 
 import (
-	"time"
+	"bytes"
+	"flag"
+	"fmt"
+	"os"
 
 	"github.com/BurntSushi/toml"
 )
 
-// Duration wrapper time.Duration for TOML
-type Duration struct {
-	time.Duration
+var configFile string
+var printDefaultConfig bool
+
+func init() {
+	flag.StringVar(&configFile, "config", "", "Filename of config")
+	flag.BoolVar(&printDefaultConfig, "config-print-default", false, "Print default config")
 }
 
-var _ toml.TextMarshaler = &Duration{}
+// PrintConfig ...
+func PrintConfig(cfg interface{}) error {
+	buf := new(bytes.Buffer)
 
-// UnmarshalText from TOML
-func (d *Duration) UnmarshalText(text []byte) error {
-	var err error
-	d.Duration, err = time.ParseDuration(string(text))
-	return err
+	encoder := toml.NewEncoder(buf)
+	encoder.Indent = ""
+
+	if err := encoder.Encode(cfg); err != nil {
+		return err
+	}
+
+	fmt.Print(buf.String())
+	return nil
 }
 
-// MarshalText encode text with TOML format
-func (d *Duration) MarshalText() ([]byte, error) {
-	return []byte(d.Duration.String()), nil
+// ParseConfig ...
+func ParseConfig(filename string, cfg interface{}) error {
+	if filename != "" {
+		if _, err := toml.DecodeFile(filename, cfg); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
-// Value return time.Duration value
-func (d *Duration) Value() time.Duration {
-	return d.Duration
+// Parse ...
+func Parse(cfg interface{}) error {
+	if printDefaultConfig {
+		if err := PrintConfig(cfg); err != nil {
+			return err
+		}
+		os.Exit(0)
+	}
+
+	return ParseConfig(configFile, cfg)
 }

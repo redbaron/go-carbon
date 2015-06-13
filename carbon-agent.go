@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"flag"
 	"fmt"
 	"log"
@@ -14,10 +13,10 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/BurntSushi/toml"
 	"github.com/Sirupsen/logrus"
 	"github.com/lomik/go-carbon/cache"
 	"github.com/lomik/go-carbon/carbon"
+	"github.com/lomik/go-carbon/config"
 	"github.com/lomik/go-carbon/logging"
 	"github.com/lomik/go-carbon/persister"
 	"github.com/lomik/go-carbon/receiver"
@@ -29,38 +28,11 @@ import _ "net/http/pprof"
 // Version of go-carbon
 const Version = "0.5.1"
 
-// PrintConfig ...
-func PrintConfig(cfg interface{}) error {
-	buf := new(bytes.Buffer)
-
-	encoder := toml.NewEncoder(buf)
-	encoder.Indent = ""
-
-	if err := encoder.Encode(cfg); err != nil {
-		return err
-	}
-
-	fmt.Print(buf.String())
-	return nil
-}
-
-// ParseConfig ...
-func ParseConfig(filename string, cfg interface{}) error {
-	if filename != "" {
-		if _, err := toml.DecodeFile(filename, cfg); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 func main() {
 	var err error
 
 	/* CONFIG start */
 
-	configFile := flag.String("config", "", "Filename of config")
-	printDefaultConfig := flag.Bool("config-print-default", false, "Print default config")
 	checkConfig := flag.Bool("check-config", false, "Check config and exit")
 
 	printVersion := flag.Bool("version", false, "Print version")
@@ -77,14 +49,7 @@ func main() {
 
 	cfg := carbon.NewConfig()
 
-	if *printDefaultConfig {
-		if err = PrintConfig(cfg); err != nil {
-			log.Fatal(err)
-		}
-		return
-	}
-
-	if err = ParseConfig(*configFile, cfg); err != nil {
+	if err = config.Parse(cfg); err != nil {
 		log.Fatal(err)
 	}
 
