@@ -9,9 +9,7 @@ import (
 	"os"
 	"os/user"
 	"runtime"
-	"strconv"
 	"strings"
-	"syscall"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/lomik/go-carbon/cache"
@@ -20,7 +18,6 @@ import (
 	"github.com/lomik/go-carbon/logging"
 	"github.com/lomik/go-carbon/persister"
 	"github.com/lomik/go-carbon/receiver"
-	"github.com/lomik/go-daemon"
 )
 
 import _ "net/http/pprof"
@@ -97,39 +94,7 @@ func main() {
 	}
 
 	if *isDaemon {
-		runtime.LockOSThread()
-
-		context := new(daemon.Context)
-		if *pidfile != "" {
-			context.PidFileName = *pidfile
-			context.PidFilePerm = 0644
-		}
-
-		if runAsUser != nil {
-			uid, err := strconv.ParseInt(runAsUser.Uid, 10, 0)
-			if err != nil {
-				log.Fatal(err)
-			}
-
-			gid, err := strconv.ParseInt(runAsUser.Gid, 10, 0)
-			if err != nil {
-				log.Fatal(err)
-			}
-
-			context.Credential = &syscall.Credential{
-				Uid: uint32(uid),
-				Gid: uint32(gid),
-			}
-		}
-
-		child, _ := context.Reborn()
-
-		if child != nil {
-			return
-		}
-		defer context.Release()
-
-		runtime.UnlockOSThread()
+		config.Daemonize(runAsUser, *pidfile)
 	}
 
 	logrus.SetLevel(logrus.DebugLevel)
