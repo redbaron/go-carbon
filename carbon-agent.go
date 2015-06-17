@@ -46,7 +46,13 @@ func main() {
 
 	cfg := carbon.NewConfig()
 
+	// parse file, print default config, check config
 	if err = config.Parse(cfg); err != nil {
+		log.Fatal(err)
+	}
+
+	// parse schemas, aggregation
+	if err = cfg.Load(); err != nil {
 		log.Fatal(err)
 	}
 
@@ -55,25 +61,6 @@ func main() {
 		runAsUser, err = user.Lookup(cfg.Common.User)
 		if err != nil {
 			log.Fatal(err)
-		}
-	}
-
-	var whisperSchemas *persister.WhisperSchemas
-	var whisperAggregation *persister.WhisperAggregation
-
-	if cfg.Whisper.Enabled {
-		whisperSchemas, err = persister.ReadWhisperSchemas(cfg.Whisper.Schemas)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		if cfg.Whisper.Aggregation != "" {
-			whisperAggregation, err = persister.ReadWhisperAggregation(cfg.Whisper.Aggregation)
-			if err != nil {
-				log.Fatal(err)
-			}
-		} else {
-			whisperAggregation = persister.NewWhisperAggregation()
 		}
 	}
 
@@ -187,7 +174,7 @@ func main() {
 
 	/* WHISPER start */
 	if cfg.Whisper.Enabled {
-		whisperPersister := persister.NewWhisper(cfg.Whisper.DataDir, whisperSchemas, whisperAggregation, core.Out())
+		whisperPersister := persister.NewWhisper(cfg.Whisper.DataDir, cfg.WhisperSchemas, cfg.WhisperAggregation, core.Out())
 		whisperPersister.SetGraphPrefix(cfg.Common.GraphPrefix)
 		whisperPersister.SetMaxUpdatesPerSecond(cfg.Whisper.MaxUpdatesPerSecond)
 		whisperPersister.SetWorkers(cfg.Whisper.Workers)

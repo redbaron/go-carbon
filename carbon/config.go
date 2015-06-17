@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/lomik/go-carbon/config"
+	"github.com/lomik/go-carbon/persister"
 )
 
 type commonConfig struct {
@@ -61,6 +62,9 @@ type Config struct {
 	Pickle     tcpConfig        `toml:"pickle"`
 	Carbonlink carbonlinkConfig `toml:"carbonlink"`
 	Pprof      pprofConfig      `toml:"pprof"`
+
+	WhisperSchemas     *persister.WhisperSchemas
+	WhisperAggregation *persister.WhisperAggregation
 }
 
 // NewConfig creates and return new instance of carbon config
@@ -115,4 +119,27 @@ func NewConfig() *Config {
 	}
 
 	return cfg
+}
+
+// Load parses schemas.conf, aggregation.conf, etc
+func (cfg *Config) Load() error {
+	var err error
+
+	if cfg.Whisper.Enabled {
+		cfg.WhisperSchemas, err = persister.ReadWhisperSchemas(cfg.Whisper.Schemas)
+		if err != nil {
+			return err
+		}
+
+		if cfg.Whisper.Aggregation != "" {
+			cfg.WhisperAggregation, err = persister.ReadWhisperAggregation(cfg.Whisper.Aggregation)
+			if err != nil {
+				return err
+			}
+		} else {
+			cfg.WhisperAggregation = persister.NewWhisperAggregation()
+		}
+	}
+
+	return nil
 }
