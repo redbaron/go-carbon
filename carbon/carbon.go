@@ -8,3 +8,8 @@ type Carbon struct {
 func New() *Carbon {
 	return &Carbon{}
 }
+
+// Configure init or change carbon configuration
+func (carbon *Carbon) Configure(config *Config) {
+
+}

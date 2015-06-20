@@ -16,42 +16,61 @@ func (v queue) Len() int           { return len(v) }
 func (v queue) Swap(i, j int)      { v[i], v[j] = v[j], v[i] }
 func (v queue) Less(i, j int) bool { return v[i].count < v[j].count }
 
+// Settings ...
+type Settings struct {
+	MaxSize        int    // cache capacity (points)
+	GraphPrefix    string // prefix for internal metrics
+	InputCapacity  int    // input channel capacity
+	OutputCapacity int    // output channel capacity
+	QueryCapacity  int    // carbonlink query channel capacity
+}
+
+// SettingsQuery ...
+type SettingsQuery struct {
+	Settings  *Settings      // set new settings if != nil
+	ReplyChan chan *Settings // result of query
+}
+
 // Cache stores and aggregate metrics in memory
 type Cache struct {
-	data          map[string]*points.Points
-	size          int
-	maxSize       int
-	inputChan     chan *points.Points // from receivers
-	inputCapacity int                 // buffer size of inputChan
-	outputChan    chan *points.Points // to persisters
-	queryChan     chan *Query         // from carbonlink
-	exitChan      chan bool           // close for stop worker
-	graphPrefix   string
-	queryCnt      int
-	overflowCnt   int // drop packages if cache full
-	queue         queue
+	settings     *Settings
+	data         map[string]*points.Points
+	queue        queue
+	inputChan    chan *points.Points // from receivers
+	outputChan   chan *points.Points // to persisters
+	queryChan    chan *Query         // from carbonlink
+	settingsChan chan *SettingsQuery // get or set settings via query to cache worker
+	exitChan     chan bool           // close for stop worker
+	size         int                 // points count in data
+	queryCnt     int                 // queries count in this checkpoint period
+	overflowCnt  int                 // drop packages if cache full
 }
 
 // New create Cache instance and run in/out goroutine
 func New() *Cache {
+	settings := &Settings{
+		MaxSize:        1000000,
+		GraphPrefix:    "carbon.",
+		InputCapacity:  51200,
+		OutputCapacity: 1024,
+		QueryCapacity:  16,
+	}
 	cache := &Cache{
-		data:          make(map[string]*points.Points, 0),
-		size:          0,
-		maxSize:       1000000,
-		exitChan:      make(chan bool),
-		queryChan:     make(chan *Query, 16),
-		graphPrefix:   "carbon.",
-		queryCnt:      0,
-		queue:         make(queue, 0),
-		inputCapacity: 51200,
-		// inputChan:   make(chan *points.Points, 51200), create in In() getter
+		settings:    settings,
+		data:        make(map[string]*points.Points, 0),
+		queue:       make(queue, 0),
+		exitChan:    make(chan bool),
+		queryChan:   make(chan *Query, settings.QueryCapacity),
+		size:        0,
+		queryCnt:    0,
+		overflowCnt: 0,
 	}
 	return cache
 }
 
-// SetInputCapacity set buffer size of input channel. Call before In() getter
-func (c *Cache) SetInputCapacity(size int) {
-	c.inputCapacity = size
+// Settings returns copy of cache settings object
+func (c *Cache) Settings(newSettings *Settings) *Settings {
+	// change for running cache
 }
 
 // Get any key/values pair from Cache
@@ -101,20 +120,10 @@ func (c *Cache) Add(p *points.Points) {
 	c.size += len(p.Data)
 }
 
-// SetGraphPrefix for internal cache metrics
-func (c *Cache) SetGraphPrefix(prefix string) {
-	c.graphPrefix = prefix
-}
-
-// SetMaxSize of cache
-func (c *Cache) SetMaxSize(maxSize int) {
-	c.maxSize = maxSize
-}
-
 // Size returns size
-func (c *Cache) Size() int {
-	return c.size
-}
+// func (c *Cache) Size() int {
+// 	return c.size
+// }
 
 type queueItem struct {
 	metric string
@@ -124,7 +133,7 @@ type queueItem struct {
 // stat send internal statistics of cache
 func (c *Cache) stat(metric string, value float64) {
 	key := fmt.Sprintf("%scache.%s", c.graphPrefix, metric)
-	c.Add(points.OnePoint(key, value, time.Now().Unix()))
+	c.Add(points.NowPoint(key, value))
 	c.queue = append(c.queue, &queueItem{key, 1})
 }
 
@@ -234,11 +243,6 @@ func (c *Cache) Out() chan *points.Points {
 // Query returns carbonlink query channel
 func (c *Cache) Query() chan *Query {
 	return c.queryChan
-}
-
-// SetOutputChanSize ...
-func (c *Cache) SetOutputChanSize(size int) {
-	c.outputChan = make(chan *points.Points, size)
 }
 
 // Start worker
