@@ -67,6 +67,19 @@ func (rcv *TCP) Stat(metric string, value float64) {
 	)
 }
 
+// doCheckpoint sends internal statistics to cache
+func (rcv *TCP) doCheckpoint() {
+	cnt := atomic.LoadUint32(&rcv.metricsReceived)
+	atomic.AddUint32(&rcv.metricsReceived, -cnt)
+	rcv.Stat("metricsReceived", float64(cnt))
+
+	rcv.Stat("active", float64(atomic.LoadInt32(&rcv.active)))
+
+	errors := atomic.LoadUint32(&rcv.errors)
+	atomic.AddUint32(&rcv.errors, -errors)
+	rcv.Stat("errors", float64(errors))
+}
+
 // Addr returns binded socket address. For bind port 0 in tests
 func (rcv *TCP) Addr() net.Addr {
 	if rcv.listener == nil {
@@ -175,15 +188,7 @@ func (rcv *TCP) Listen(addr *net.TCPAddr) error {
 		for {
 			select {
 			case <-ticker.C:
-				cnt := atomic.LoadUint32(&rcv.metricsReceived)
-				atomic.AddUint32(&rcv.metricsReceived, -cnt)
-				rcv.Stat("metricsReceived", float64(cnt))
-
-				rcv.Stat("active", float64(atomic.LoadInt32(&rcv.active)))
-
-				errors := atomic.LoadUint32(&rcv.errors)
-				atomic.AddUint32(&rcv.errors, -errors)
-				rcv.Stat("errors", float64(errors))
+				rcv.doCheckpoint()
 			case <-rcv.exit:
 				rcv.listener.Close()
 				return
