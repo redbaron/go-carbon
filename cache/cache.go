@@ -25,7 +25,6 @@ type Settings struct {
 	GraphPrefix    string // prefix for internal metrics
 	InputCapacity  int    // input channel capacity
 	OutputCapacity int    // output channel capacity
-	QueryCapacity  int    // carbonlink query channel capacity
 }
 
 // Cache stores and aggregate metrics in memory
@@ -51,7 +50,6 @@ func New() *Cache {
 		GraphPrefix:    "carbon.",
 		InputCapacity:  51200,
 		OutputCapacity: 1024,
-		QueryCapacity:  16,
 	}
 	cache := &Cache{
 		settings:    settings,
@@ -59,7 +57,7 @@ func New() *Cache {
 		queue:       make(queue, 0),
 		isRunning:   false,
 		exitChan:    make(chan bool),
-		queryChan:   make(chan *Query, settings.QueryCapacity),
+		queryChan:   make(chan *Query, 1024),
 		size:        0,
 		queryCnt:    0,
 		overflowCnt: 0,
