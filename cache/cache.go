@@ -19,6 +19,8 @@ func (v queue) Less(i, j int) bool { return v[i].count < v[j].count }
 
 // Settings ...
 type Settings struct {
+	sync.RWMutex
+	changed        chan bool
 	MaxSize        int    // cache capacity (points)
 	GraphPrefix    string // prefix for internal metrics
 	InputCapacity  int    // input channel capacity
@@ -28,24 +30,23 @@ type Settings struct {
 
 // Cache stores and aggregate metrics in memory
 type Cache struct {
-	sync.RWMutex
-	settings     *Settings
-	data         map[string]*points.Points
-	queue        queue
-	isRunning    bool                // current state of cache worker
-	inputChan    chan *points.Points // from receivers
-	outputChan   chan *points.Points // to persisters
-	queryChan    chan *Query         // from carbonlink
-	settingsChan chan *settingsQuery // get or set settings via query to cache worker
-	exitChan     chan bool           // close for stop worker
-	size         int                 // points count in data
-	queryCnt     int                 // queries count in this checkpoint period
-	overflowCnt  int                 // drop packages if cache full
+	settings    *Settings
+	data        map[string]*points.Points
+	queue       queue
+	isRunning   bool                // current state of cache worker
+	inputChan   chan *points.Points // from receivers
+	outputChan  chan *points.Points // to persisters
+	queryChan   chan *Query         // from carbonlink
+	exitChan    chan bool           // close for stop worker
+	size        int                 // points count in data
+	queryCnt    int                 // queries count in this checkpoint period
+	overflowCnt int                 // drop packages if cache full
 }
 
 // New create Cache instance and run in/out goroutine
 func New() *Cache {
 	settings := &Settings{
+		changed:        make(chan bool),
 		MaxSize:        1000000,
 		GraphPrefix:    "carbon.",
 		InputCapacity:  51200,
@@ -53,16 +54,15 @@ func New() *Cache {
 		QueryCapacity:  16,
 	}
 	cache := &Cache{
-		settings:     settings,
-		data:         make(map[string]*points.Points, 0),
-		queue:        make(queue, 0),
-		isRunning:    false,
-		exitChan:     make(chan bool),
-		queryChan:    make(chan *Query, settings.QueryCapacity),
-		settingsChan: make(chan *settingsQuery),
-		size:         0,
-		queryCnt:     0,
-		overflowCnt:  0,
+		settings:    settings,
+		data:        make(map[string]*points.Points, 0),
+		queue:       make(queue, 0),
+		isRunning:   false,
+		exitChan:    make(chan bool),
+		queryChan:   make(chan *Query, settings.QueryCapacity),
+		size:        0,
+		queryCnt:    0,
+		overflowCnt: 0,
 	}
 	return cache
 }
@@ -129,6 +129,19 @@ func (c *Cache) worker() {
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
 
+	var maxSize int
+	var settingsChanged chan bool
+
+	refreshSettings := func() {
+		c.settings.RLock()
+		defer c.settings.RUnlock()
+
+		settingsChanged = c.settings.changed
+		maxSize = c.settings.MaxSize
+	}
+
+	refreshSettings()
+
 	for {
 		if values == nil {
 			values = c.pop()
@@ -158,9 +171,9 @@ func (c *Cache) worker() {
 
 			query.ReplyChan <- reply
 
-		// get or change settings
-		case query := <-c.settingsChan:
-			c.handleSettingsQuery(query)
+		// settings updated
+		case <-settingsChanged:
+			refreshSettings()
 
 		// to persister
 		case sendTo <- values:
@@ -168,7 +181,7 @@ func (c *Cache) worker() {
 
 		// from receiver
 		case msg := <-c.inputChan:
-			if c.settings.MaxSize == 0 || c.size < c.settings.MaxSize {
+			if maxSize == 0 || c.size < maxSize {
 				c.add(msg)
 			} else {
 				c.overflowCnt++
@@ -205,12 +218,10 @@ func (c *Cache) Start() {
 	if c.outputChan == nil {
 		c.outputChan = make(chan *points.Points, 1024)
 	}
-	c.isRunning = true
 	go c.worker()
 }
 
 // Stop worker
 func (c *Cache) Stop() {
 	close(c.exitChan)
-	c.isRunning = false
 }
