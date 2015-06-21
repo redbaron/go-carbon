@@ -12,7 +12,7 @@ type tcpTestCase struct {
 	*testing.T
 	receiver *TCP
 	conn     net.Conn
-	rcvChan  chan *points.Points
+	rcvChan  *points.Channel
 }
 
 func newTCPTestCase(t *testing.T) *tcpTestCase {
@@ -25,7 +25,7 @@ func newTCPTestCase(t *testing.T) *tcpTestCase {
 		t.Fatal(err)
 	}
 
-	test.rcvChan = make(chan *points.Points, 128)
+	test.rcvChan = points.NewChannel(128)
 	test.receiver = NewTCP(test.rcvChan)
 	// defer receiver.Stop()
 
@@ -73,7 +73,7 @@ func TestTCP1(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	select {
-	case msg := <-test.rcvChan:
+	case msg := <-test.rcvChan.Chan():
 		test.Eq(msg, points.OnePoint("hello.world", 42.15, 1422698155))
 	default:
 		t.Fatalf("Message #0 not received")
@@ -89,14 +89,14 @@ func TestTCP2(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	select {
-	case msg := <-test.rcvChan:
+	case msg := <-test.rcvChan.Chan():
 		test.Eq(msg, points.OnePoint("hello.world", 42.15, 1422698155))
 	default:
 		t.Fatalf("Message #0 not received")
 	}
 
 	select {
-	case msg := <-test.rcvChan:
+	case msg := <-test.rcvChan.Chan():
 		test.Eq(msg, points.OnePoint("metric.name", -72.11, 1422698155))
 	default:
 		t.Fatalf("Message #1 not received")

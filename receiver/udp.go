@@ -16,7 +16,7 @@ import (
 
 // UDP receive metrics from UDP socket
 type UDP struct {
-	out                chan *points.Points
+	out                *points.Channel
 	exit               chan bool
 	graphPrefix        string
 	metricsReceived    uint32
@@ -27,7 +27,7 @@ type UDP struct {
 }
 
 // NewUDP create new instance of UDP
-func NewUDP(out chan *points.Points) *UDP {
+func NewUDP(out *points.Channel) *UDP {
 	return &UDP{
 		out:  out,
 		exit: make(chan bool),
@@ -115,7 +115,7 @@ func (rcv *UDP) SetGraphPrefix(prefix string) {
 
 // Stat sends internal statistics to cache
 func (rcv *UDP) Stat(metric string, value float64) {
-	rcv.out <- points.OnePoint(
+	rcv.out.Chan() <- points.OnePoint(
 		fmt.Sprintf("%s%s", rcv.graphPrefix, metric),
 		value,
 		time.Now().Unix(),
@@ -191,6 +191,8 @@ func (rcv *UDP) Listen(addr *net.UDPAddr) error {
 
 		lines := newIncompleteStorage()
 
+		out, outChanged := rcv.out.Current()
+
 		for {
 			rlen, peer, err := rcv.conn.ReadFromUDP(buf[:])
 			if err != nil {
@@ -237,7 +239,13 @@ func (rcv *UDP) Listen(addr *net.UDPAddr) error {
 						logrus.Info(err)
 					} else {
 						atomic.AddUint32(&rcv.metricsReceived, 1)
-						rcv.out <- msg
+
+						select {
+						case <-outChanged:
+							out, outChanged = rcv.out.Current()
+						default:
+						}
+						out <- msg
 					}
 				}
 			}

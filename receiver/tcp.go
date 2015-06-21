@@ -17,7 +17,7 @@ import (
 
 // TCP receive metrics from TCP connections
 type TCP struct {
-	out             chan *points.Points
+	out             *points.Channel
 	exit            chan bool
 	graphPrefix     string
 	metricsReceived uint32
@@ -28,7 +28,7 @@ type TCP struct {
 }
 
 // NewTCP create new instance of TCP
-func NewTCP(out chan *points.Points) *TCP {
+func NewTCP(out *points.Channel) *TCP {
 	return &TCP{
 		out:      out,
 		exit:     make(chan bool),
@@ -37,7 +37,7 @@ func NewTCP(out chan *points.Points) *TCP {
 }
 
 // NewPickle create new instance of TCP with pickle listener enabled
-func NewPickle(out chan *points.Points) *TCP {
+func NewPickle(out *points.Channel) *TCP {
 	return &TCP{
 		out:      out,
 		exit:     make(chan bool),
@@ -60,7 +60,7 @@ func (rcv *TCP) Stat(metric string, value float64) {
 		protocolPrefix = "tcp"
 	}
 
-	rcv.out <- points.OnePoint(
+	rcv.out.Chan() <- points.OnePoint(
 		fmt.Sprintf("%s%s.%s", rcv.graphPrefix, protocolPrefix, metric),
 		value,
 		time.Now().Unix(),
@@ -95,6 +95,8 @@ func (rcv *TCP) handleConnection(conn net.Conn) {
 	defer conn.Close()
 	reader := bufio.NewReader(conn)
 
+	out, outChanged := rcv.out.Current()
+
 	for {
 		conn.SetReadDeadline(time.Now().Add(2 * time.Minute))
 
@@ -117,7 +119,13 @@ func (rcv *TCP) handleConnection(conn net.Conn) {
 				logrus.Info(err)
 			} else {
 				atomic.AddUint32(&rcv.metricsReceived, 1)
-				rcv.out <- msg
+
+				select {
+				case <-outChanged:
+					out, outChanged = rcv.out.Current()
+				default:
+				}
+				out <- msg
 			}
 		}
 	}
@@ -132,6 +140,8 @@ func (rcv *TCP) handlePickle(conn net.Conn) {
 
 	var msgLen uint32
 	var err error
+
+	out, outChanged := rcv.out.Current()
 
 	for {
 		conn.SetReadDeadline(time.Now().Add(2 * time.Minute))
@@ -168,7 +178,13 @@ func (rcv *TCP) handlePickle(conn net.Conn) {
 
 		for _, msg := range msgs {
 			atomic.AddUint32(&rcv.metricsReceived, uint32(len(msg.Data)))
-			rcv.out <- msg
+
+			select {
+			case <-outChanged:
+				out, outChanged = rcv.out.Current()
+			default:
+			}
+			out <- msg
 		}
 	}
 }

@@ -19,8 +19,6 @@ func (v queue) Less(i, j int) bool { return v[i].count < v[j].count }
 
 // Settings ...
 type Settings struct {
-	sync.RWMutex
-	changed        chan bool
 	MaxSize        int    // cache capacity (points)
 	GraphPrefix    string // prefix for internal metrics
 	InputCapacity  int    // input channel capacity
@@ -29,38 +27,40 @@ type Settings struct {
 
 // Cache stores and aggregate metrics in memory
 type Cache struct {
-	settings    *Settings
-	data        map[string]*points.Points
-	queue       queue
-	isRunning   bool                // current state of cache worker
-	inputChan   chan *points.Points // from receivers
-	outputChan  chan *points.Points // to persisters
-	queryChan   chan *Query         // from carbonlink
-	exitChan    chan bool           // close for stop worker
-	size        int                 // points count in data
-	queryCnt    int                 // queries count in this checkpoint period
-	overflowCnt int                 // drop packages if cache full
+	sync.RWMutex
+	settings        *Settings
+	settingsChanged chan bool
+	data            map[string]*points.Points
+	queue           queue
+	isRunning       bool            // current state of cache worker
+	inputChan       *points.Channel // from receivers
+	outputChan      *points.Channel // to persisters
+	queryChan       chan *Query     // from carbonlink
+	exitChan        chan bool       // close for stop worker
+	size            int             // points count in data
+	queryCnt        int             // queries count in this checkpoint period
+	overflowCnt     int             // drop packages if cache full
 }
 
 // New create Cache instance and run in/out goroutine
 func New() *Cache {
 	settings := &Settings{
-		changed:        make(chan bool),
 		MaxSize:        1000000,
 		GraphPrefix:    "carbon.",
 		InputCapacity:  51200,
 		OutputCapacity: 1024,
 	}
 	cache := &Cache{
-		settings:    settings,
-		data:        make(map[string]*points.Points, 0),
-		queue:       make(queue, 0),
-		isRunning:   false,
-		exitChan:    make(chan bool),
-		queryChan:   make(chan *Query, 1024),
-		size:        0,
-		queryCnt:    0,
-		overflowCnt: 0,
+		settings:        settings,
+		settingsChanged: make(chan bool),
+		data:            make(map[string]*points.Points, 0),
+		queue:           make(queue, 0),
+		isRunning:       false,
+		exitChan:        make(chan bool),
+		queryChan:       make(chan *Query, 1024),
+		size:            0,
+		queryCnt:        0,
+		overflowCnt:     0,
 	}
 	return cache
 }
@@ -70,21 +70,21 @@ type queueItem struct {
 	count  int
 }
 
-// stat send internal statistics of cache
-func (c *Cache) stat(metric string, value float64) {
-	c.settings.RLock()
-	defer c.settings.RUnlock()
-
-	key := fmt.Sprintf("%scache.%s", c.settings.GraphPrefix, metric)
-	c.add(points.NowPoint(key, value))
-	c.queue = append(c.queue, &queueItem{key, 1})
-}
-
 // doCheckpoint reorder save queue, add carbon metrics to queue
 func (c *Cache) doCheckpoint() {
+	c.RLock()
+	graphPrefix := c.settings.GraphPrefix
+	c.RUnlock()
+
+	stat := func(metric string, value float64) {
+		key := fmt.Sprintf("%scache.%s", graphPrefix, metric)
+		c.add(points.NowPoint(key, value))
+		c.queue = append(c.queue, &queueItem{key, 1})
+	}
+
 	start := time.Now()
 
-	inputLenBeforeCheckpoint := len(c.inputChan)
+	inputLenBeforeCheckpoint := c.inputChan.Len()
 
 	newQueue := make(queue, 0)
 
@@ -96,17 +96,17 @@ func (c *Cache) doCheckpoint() {
 
 	c.queue = newQueue
 
-	inputLenAfterCheckpoint := len(c.inputChan)
+	inputLenAfterCheckpoint := c.inputChan.Len()
 
 	worktime := time.Now().Sub(start)
 
-	c.stat("size", float64(c.size))
-	c.stat("metrics", float64(len(c.data)))
-	c.stat("queries", float64(c.queryCnt))
-	c.stat("overflow", float64(c.overflowCnt))
-	c.stat("checkpointTime", worktime.Seconds())
-	c.stat("inputLenBeforeCheckpoint", float64(inputLenBeforeCheckpoint))
-	c.stat("inputLenAfterCheckpoint", float64(inputLenAfterCheckpoint))
+	stat("size", float64(c.size))
+	stat("metrics", float64(len(c.data)))
+	stat("queries", float64(c.queryCnt))
+	stat("overflow", float64(c.overflowCnt))
+	stat("checkpointTime", worktime.Seconds())
+	stat("inputLenBeforeCheckpoint", float64(inputLenBeforeCheckpoint))
+	stat("inputLenAfterCheckpoint", float64(inputLenAfterCheckpoint))
 
 	logrus.WithFields(logrus.Fields{
 		"time":                     worktime.String(),
@@ -116,7 +116,7 @@ func (c *Cache) doCheckpoint() {
 		"overflow":                 c.overflowCnt,
 		"inputLenBeforeCheckpoint": inputLenBeforeCheckpoint,
 		"inputLenAfterCheckpoint":  inputLenAfterCheckpoint,
-		"inputCapacity":            cap(c.inputChan),
+		"inputCapacity":            c.inputChan.Size(),
 	}).Info("[cache] doCheckpoint()")
 
 	c.queryCnt = 0
@@ -134,30 +134,42 @@ func (c *Cache) worker() {
 	var settingsChanged chan bool
 
 	refreshSettings := func() {
-		c.settings.RLock()
-		defer c.settings.RUnlock()
+		c.RLock()
+		defer c.RUnlock()
 
-		settingsChanged = c.settings.changed
+		settingsChanged = c.settingsChanged
 		maxSize = c.settings.MaxSize
 	}
 
 	refreshSettings()
 
+	// Call Out() and In() for create channels if nil
+	out, outChanged := c.Out().Current()
+	in, inChanged := c.In().Current()
+
 	for {
 		if values == nil {
 			values = c.pop()
+		}
 
-			if values != nil {
-				sendTo = c.outputChan
-			} else {
-				sendTo = nil
-			}
+		if values == nil {
+			sendTo = nil
+		} else {
+			sendTo = out
 		}
 
 		select {
 		// checkpoint
 		case <-ticker.C:
 			c.doCheckpoint()
+
+		// changed input channel
+		case <-inChanged:
+			in, inChanged = c.inputChan.Current()
+
+		// changed output channel
+		case <-outChanged:
+			out, outChanged = c.outputChan.Current()
 
 		// carbonlink
 		case query := <-c.queryChan:
@@ -181,7 +193,7 @@ func (c *Cache) worker() {
 			values = nil
 
 		// from receiver
-		case msg := <-c.inputChan:
+		case msg := <-in:
 			if maxSize == 0 || c.size < maxSize {
 				c.add(msg)
 			} else {
@@ -197,15 +209,24 @@ func (c *Cache) worker() {
 }
 
 // In returns input channel
-func (c *Cache) In() chan *points.Points {
+func (c *Cache) In() *points.Channel {
+	c.RLock()
+	defer c.RUnlock()
+
 	if c.inputChan == nil {
-		c.inputChan = make(chan *points.Points, c.settings.InputCapacity)
+		c.inputChan = points.NewChannel(c.settings.InputCapacity)
 	}
 	return c.inputChan
 }
 
 // Out returns output channel
-func (c *Cache) Out() chan *points.Points {
+func (c *Cache) Out() *points.Channel {
+	c.RLock()
+	defer c.RUnlock()
+
+	if c.outputChan == nil {
+		c.outputChan = points.NewChannel(c.settings.OutputCapacity)
+	}
 	return c.outputChan
 }
 
@@ -216,9 +237,6 @@ func (c *Cache) Query() chan *Query {
 
 // Start worker
 func (c *Cache) Start() {
-	if c.outputChan == nil {
-		c.outputChan = make(chan *points.Points, 1024)
-	}
 	go c.worker()
 }
 

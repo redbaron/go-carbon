@@ -106,5 +106,60 @@ func (c *Channel) Resize(newSize int) {
 // Size returns current size of channel
 func (c *Channel) Size() int {
 	ch, _ := c.Current()
+	return cap(ch)
+}
+
+// Len return current "len" of active channel
+func (c *Channel) Len() int {
+	ch, _ := c.Current()
 	return len(ch)
+}
+
+// Chan return current channel. Uses mutex.Lock - for tests only
+func (c *Channel) Chan() chan *Points {
+	ch, _ := c.Current()
+	return ch
+}
+
+// ThrottledOut returns new throttled channel
+func (c *Channel) ThrottledOut(ratePerSec int) *Channel {
+	in, inChanged := c.Current()
+
+	outChannel := NewChannel(cap(in))
+
+	out, outChanged := outChannel.Current()
+
+	step := time.Duration(1e9/ratePerSec) * time.Nanosecond
+
+	go func() {
+		var p *Points
+		var opened bool
+
+		defer close(out)
+
+		// start flight
+		throttleTicker := time.NewTicker(step)
+		defer throttleTicker.Stop()
+
+		for {
+			select {
+			// change input
+			case <-inChanged:
+				in, inChanged = c.Current()
+				outChannel.Resize(cap(in))
+			// change output
+			case <-outChanged:
+				out, outChanged = outChannel.Current()
+			// receive
+			case <-throttleTicker.C:
+				if p, opened = <-in; !opened {
+					return
+				}
+				out <- p
+			}
+		}
+	}()
+
+	return outChannel
+
 }

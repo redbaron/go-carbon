@@ -15,7 +15,7 @@ type udpTestCase struct {
 	*testing.T
 	receiver *UDP
 	conn     net.Conn
-	rcvChan  chan *points.Points
+	rcvChan  *points.Channel
 }
 
 func newUDPTestCase(t *testing.T) *udpTestCase {
@@ -28,7 +28,7 @@ func newUDPTestCase(t *testing.T) *udpTestCase {
 		t.Fatal(err)
 	}
 
-	test.rcvChan = make(chan *points.Points, 128)
+	test.rcvChan = points.NewChannel(128)
 	test.receiver = NewUDP(test.rcvChan)
 	// defer receiver.Stop()
 
@@ -82,7 +82,7 @@ func TestUDP1(t *testing.T) {
 	test.Send("hello.world 42.15 1422698155\n")
 
 	select {
-	case msg := <-test.rcvChan:
+	case msg := <-test.rcvChan.Chan():
 		test.Eq(msg, points.OnePoint("hello.world", 42.15, 1422698155))
 	default:
 		t.Fatalf("Message #0 not received")
@@ -96,14 +96,14 @@ func TestUDP2(t *testing.T) {
 	test.Send("hello.world 42.15 1422698155\nmetric.name -72.11 1422698155\n")
 
 	select {
-	case msg := <-test.rcvChan:
+	case msg := <-test.rcvChan.Chan():
 		test.Eq(msg, points.OnePoint("hello.world", 42.15, 1422698155))
 	default:
 		t.Fatalf("Message #0 not received")
 	}
 
 	select {
-	case msg := <-test.rcvChan:
+	case msg := <-test.rcvChan.Chan():
 		test.Eq(msg, points.OnePoint("metric.name", -72.11, 1422698155))
 	default:
 		t.Fatalf("Message #1 not received")
@@ -118,14 +118,14 @@ func TestChunkedUDP(t *testing.T) {
 	test.Send("c.name -72.11 1422698155\n")
 
 	select {
-	case msg := <-test.rcvChan:
+	case msg := <-test.rcvChan.Chan():
 		test.Eq(msg, points.OnePoint("hello.world", 42.15, 1422698155))
 	default:
 		t.Fatalf("Message #0 not received")
 	}
 
 	select {
-	case msg := <-test.rcvChan:
+	case msg := <-test.rcvChan.Chan():
 		test.Eq(msg, points.OnePoint("metric.name", -72.11, 1422698155))
 	default:
 		t.Fatalf("Message #1 not received")
