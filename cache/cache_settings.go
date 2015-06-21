@@ -34,6 +34,10 @@ func (c *Cache) Settings(newSettings *Settings) *Settings {
 		c.settings.GraphPrefix = newSettings.GraphPrefix
 	}
 
+	changed := c.settings.changed
+	c.settings.changed = make(chan bool)
+	close(changed)
+
 	s := *c.settings
 
 	return &s
