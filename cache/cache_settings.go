@@ -6,15 +6,15 @@ import "github.com/Sirupsen/logrus"
 func (c *Cache) Settings(newSettings *Settings) *Settings {
 
 	if newSettings == nil { // read-only
-		c.settings.RLock()
-		defer c.settings.RUnlock()
+		c.RLock()
+		defer c.RUnlock()
 
 		s := *c.settings
 		return &s
 	}
 
-	c.settings.Lock()
-	defer c.settings.Unlock()
+	c.Lock()
+	defer c.Unlock()
 
 	if newSettings.MaxSize != c.settings.MaxSize {
 		logrus.WithFields(logrus.Fields{
@@ -34,8 +34,32 @@ func (c *Cache) Settings(newSettings *Settings) *Settings {
 		c.settings.GraphPrefix = newSettings.GraphPrefix
 	}
 
-	changed := c.settings.changed
-	c.settings.changed = make(chan bool)
+	if newSettings.InputCapacity != c.settings.InputCapacity {
+		logrus.WithFields(logrus.Fields{
+			"old": c.settings.InputCapacity,
+			"new": newSettings.InputCapacity,
+		}).Info("[cache] cache.InputCapacity changed")
+
+		c.settings.InputCapacity = newSettings.InputCapacity
+		if c.inputChan != nil {
+			c.inputChan.Resize(c.settings.InputCapacity)
+		}
+	}
+
+	if newSettings.OutputCapacity != c.settings.OutputCapacity {
+		logrus.WithFields(logrus.Fields{
+			"old": c.settings.OutputCapacity,
+			"new": newSettings.OutputCapacity,
+		}).Info("[cache] cache.OutputCapacity changed")
+
+		c.settings.OutputCapacity = newSettings.OutputCapacity
+		if c.inputChan != nil {
+			c.inputChan.Resize(c.settings.OutputCapacity)
+		}
+	}
+
+	changed := c.settingsChanged
+	c.settingsChanged = make(chan bool)
 	close(changed)
 
 	s := *c.settings

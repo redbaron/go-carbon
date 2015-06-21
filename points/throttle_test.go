@@ -11,11 +11,14 @@ func TestThrottleChan(t *testing.T) {
 	perSecond := 100
 	timestamp := time.Now().Unix()
 
-	chIn := make(chan *Points)
-	chOut := ThrottleChan(chIn, perSecond)
+	chIn := NewChannel(0)
+	chOut := chIn.ThrottledOut(perSecond)
 	wait := time.After(time.Second)
 
 	bw := 0
+
+	in, _ := chIn.Current()
+	out, _ := chOut.Current()
 
 loop:
 	for {
@@ -24,11 +27,11 @@ loop:
 			break loop
 		default:
 		}
-		chIn <- OnePoint("metric", 1, timestamp)
-		<-chOut
+		in <- OnePoint("metric", 1, timestamp)
+		<-out
 		bw++
 	}
-	close(chIn)
+	close(in)
 
 	max := float64(perSecond) * 1.05
 	min := float64(perSecond) * 0.95

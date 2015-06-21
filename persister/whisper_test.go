@@ -15,7 +15,7 @@ import (
 )
 
 func TestNewWhisper(t *testing.T) {
-	inchan := make(chan *points.Points)
+	inchan := points.NewChannel(0)
 	schemas := WhisperSchemas{}
 	aggrs := WhisperAggregation{}
 	output := NewWhisper("foo", &schemas, &aggrs, inchan)
@@ -52,9 +52,9 @@ func TestStat(t *testing.T) {
 	fixture := Whisper{
 		graphPrefix: "bing.bang.",
 	}
-	fixture.in = make(chan *points.Points)
+	fixture.in = points.NewChannel(0)
 	go func() {
-		output := <-fixture.in
+		output := <-fixture.in.Chan()
 		expected := points.OnePoint(
 			"bing.bang.persister.foo.bar",
 			1.5,
@@ -118,12 +118,12 @@ func randomPoints(num int, out chan *points.Points) {
 func TestShuffler(t *testing.T) {
 	rand.Seed(time.Now().Unix())
 	fixture := Whisper{exit: make(chan bool)}
-	in := make(chan *points.Points)
-	out1 := make(chan *points.Points)
-	out2 := make(chan *points.Points)
-	out3 := make(chan *points.Points)
-	out4 := make(chan *points.Points)
-	out := [](chan *points.Points){out1, out2, out3, out4}
+	in := points.NewChannel(0)
+	out1 := points.NewChannel(0)
+	out2 := points.NewChannel(0)
+	out3 := points.NewChannel(0)
+	out4 := points.NewChannel(0)
+	out := []*points.Channel{out1, out2, out3, out4}
 	go fixture.shuffler(in, out)
 	buckets := [4]int{0, 0, 0, 0}
 	dotest := make(chan bool)
@@ -131,13 +131,13 @@ func TestShuffler(t *testing.T) {
 	go func() {
 		for {
 			select {
-			case <-out1:
+			case <-out1.Chan():
 				buckets[0]++
-			case <-out2:
+			case <-out2.Chan():
 				buckets[1]++
-			case <-out3:
+			case <-out3.Chan():
 				buckets[2]++
-			case <-out4:
+			case <-out4.Chan():
 				buckets[3]++
 			case <-dotest:
 				total := 0
@@ -151,7 +151,7 @@ func TestShuffler(t *testing.T) {
 
 		}
 	}()
-	randomPoints(runlength, in)
+	randomPoints(runlength, in.Chan())
 	fixture.exit <- true
 	dotest <- true
 

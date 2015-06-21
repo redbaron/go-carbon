@@ -36,7 +36,9 @@ func TestCarbonlink(t *testing.T) {
 	assert := assert.New(t)
 
 	cache := New()
-	cache.outputChan = make(chan *points.Points, 0)
+	cache.EditSettings(func(settings *Settings) {
+		settings.OutputCapacity = 0
+	})
 	cache.Start()
 
 	msg1 := points.OnePoint(
@@ -57,9 +59,9 @@ func TestCarbonlink(t *testing.T) {
 		1422795966,
 	)
 
-	cache.In() <- msg1
-	cache.In() <- msg2
-	cache.In() <- msg3
+	cache.In().Chan() <- msg1
+	cache.In().Chan() <- msg2
+	cache.In().Chan() <- msg3
 
 	defer cache.Stop()
 
@@ -116,7 +118,7 @@ func TestCarbonlink(t *testing.T) {
 	/* Remove carbon.agents.carbon_agent_server.param.size from cache and request again */
 
 	for {
-		c := <-cache.Out()
+		c := <-cache.Out().Chan()
 		if c.Metric == "carbon.agents.carbon_agent_server.param.size" {
 			break
 		}
@@ -151,7 +153,9 @@ func TestCarbonlinkErrors(t *testing.T) {
 	assert := assert.New(t)
 
 	cache := New()
-	cache.outputChan = make(chan *points.Points, 0)
+	cache.EditSettings(func(settings *Settings) {
+		settings.OutputCapacity = 0
+	})
 	cache.Start()
 
 	addr, err := net.ResolveTCPAddr("tcp", "localhost:0")

@@ -37,7 +37,7 @@ var app = Persister{
 type Whisper struct {
 	updateOperations    uint32
 	commitedPoints      uint32
-	in                  chan *points.Points
+	in                  *points.Channel
 	exit                chan bool
 	schemas             *WhisperSchemas
 	aggregation         *WhisperAggregation
@@ -49,7 +49,7 @@ type Whisper struct {
 }
 
 // NewWhisper create instance of Whisper
-func NewWhisper(rootPath string, schemas *WhisperSchemas, aggregation *WhisperAggregation, in chan *points.Points) *Whisper {
+func NewWhisper(rootPath string, schemas *WhisperSchemas, aggregation *WhisperAggregation, in *points.Channel) *Whisper {
 	return &Whisper{
 		in:                  in,
 		exit:                make(chan bool),
@@ -91,7 +91,7 @@ func (p *Whisper) SetWorkers(count int) {
 
 // Stat sends internal statistics to cache
 func (p *Whisper) Stat(metric string, value float64) {
-	p.in <- points.OnePoint(
+	p.in.Chan() <- points.OnePoint(
 		fmt.Sprintf("%spersister.%s", p.graphPrefix, metric),
 		value,
 		app.Clock.Now().Unix(),
@@ -155,26 +155,42 @@ func (p *Whisper) store(values *points.Points) {
 	w.UpdateMany(points)
 }
 
-func (p *Whisper) worker(in chan *points.Points) {
+func (p *Whisper) worker(inChannel *points.Channel) {
+	in, inChanged := inChannel.Current()
+
 	for {
 		select {
 		case <-p.exit:
 			break
+		case <-inChanged:
+			in, inChanged = inChannel.Current()
 		case values := <-in:
 			p.store(values)
 		}
 	}
 }
 
-func (p *Whisper) shuffler(in chan *points.Points, out [](chan *points.Points)) {
+func (p *Whisper) shuffler(inChannel *points.Channel, out []*points.Channel) {
 	workers := uint32(len(out))
+
+	var outChannels [](chan *points.Points)
+
+	for _, c := range out {
+		ch, _ := c.Current() // channels between shuffler and persister unchangeable
+		outChannels = append(outChannels, ch)
+	}
+
+	in, inChanged := inChannel.Current()
+
 	for {
 		select {
 		case <-p.exit:
 			break
+		case <-inChanged:
+			in, inChanged = inChannel.Current()
 		case values := <-in:
 			index := crc32.ChecksumIEEE([]byte(values.Metric)) % workers
-			out[index] <- values
+			outChannels[index] <- values
 		}
 	}
 }
@@ -228,16 +244,16 @@ func (p *Whisper) Start() {
 
 	inChan := p.in
 	if p.maxUpdatesPerSecond > 0 {
-		inChan = points.ThrottleChan(inChan, p.maxUpdatesPerSecond)
+		inChan = inChan.ThrottledOut(p.maxUpdatesPerSecond)
 	}
 
 	if p.workersCount <= 1 { // solo worker
 		go p.worker(inChan)
 	} else {
-		var channels [](chan *points.Points)
+		var channels [](*points.Channel)
 
 		for i := 0; i < p.workersCount; i++ {
-			ch := make(chan *points.Points, 32)
+			ch := points.NewChannel(32)
 			channels = append(channels, ch)
 			go p.worker(ch)
 		}
