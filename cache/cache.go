@@ -53,15 +53,16 @@ func New() *Cache {
 		QueryCapacity:  16,
 	}
 	cache := &Cache{
-		settings:    settings,
-		data:        make(map[string]*points.Points, 0),
-		queue:       make(queue, 0),
-		isRunning:   false,
-		exitChan:    make(chan bool),
-		queryChan:   make(chan *Query, settings.QueryCapacity),
-		size:        0,
-		queryCnt:    0,
-		overflowCnt: 0,
+		settings:     settings,
+		data:         make(map[string]*points.Points, 0),
+		queue:        make(queue, 0),
+		isRunning:    false,
+		exitChan:     make(chan bool),
+		queryChan:    make(chan *Query, settings.QueryCapacity),
+		settingsChan: make(chan *settingsQuery),
+		size:         0,
+		queryCnt:     0,
+		overflowCnt:  0,
 	}
 	return cache
 }
@@ -122,9 +123,6 @@ func (c *Cache) doCheckpoint() {
 }
 
 func (c *Cache) worker() {
-	c.isRunning = true
-	defer func() { c.isRunning = false }()
-
 	var values *points.Points
 	var sendTo chan *points.Points
 
@@ -159,6 +157,10 @@ func (c *Cache) worker() {
 			}
 
 			query.ReplyChan <- reply
+
+		// get or change settings
+		case query := <-c.settingsChan:
+			c.handleSettingsQuery(query)
 
 		// to persister
 		case sendTo <- values:
@@ -203,10 +205,12 @@ func (c *Cache) Start() {
 	if c.outputChan == nil {
 		c.outputChan = make(chan *points.Points, 1024)
 	}
+	c.isRunning = true
 	go c.worker()
 }
 
 // Stop worker
 func (c *Cache) Stop() {
 	close(c.exitChan)
+	c.isRunning = false
 }

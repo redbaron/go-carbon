@@ -52,8 +52,3 @@ func (c *Cache) add(p *points.Points) {
 	}
 	c.size += len(p.Data)
 }
-
-// Size returns size
-// func (c *Cache) Size() int {
-// 	return c.size
-// }
