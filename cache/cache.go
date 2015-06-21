@@ -74,6 +74,9 @@ type queueItem struct {
 
 // stat send internal statistics of cache
 func (c *Cache) stat(metric string, value float64) {
+	c.settings.RLock()
+	defer c.settings.RUnlock()
+
 	key := fmt.Sprintf("%scache.%s", c.settings.GraphPrefix, metric)
 	c.add(points.NowPoint(key, value))
 	c.queue = append(c.queue, &queueItem{key, 1})
