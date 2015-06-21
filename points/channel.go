@@ -102,3 +102,9 @@ func (c *Channel) Resize(newSize int) {
 	newChannel := make(chan *Points, newSize)
 	c.changeChannel(newChannel)
 }
+
+// Size returns current size of channel
+func (c *Channel) Size() int {
+	ch, _ := c.Current()
+	return len(ch)
+}
