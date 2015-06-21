@@ -36,8 +36,8 @@ func TestCarbonlink(t *testing.T) {
 	assert := assert.New(t)
 
 	cache := New()
+	cache.outputChan = make(chan *points.Points, 0)
 	cache.Start()
-	cache.SetOutputChanSize(0)
 
 	msg1 := points.OnePoint(
 		"carbon.agents.carbon_agent_server.cache.size",
@@ -151,8 +151,8 @@ func TestCarbonlinkErrors(t *testing.T) {
 	assert := assert.New(t)
 
 	cache := New()
+	cache.outputChan = make(chan *points.Points, 0)
 	cache.Start()
-	cache.SetOutputChanSize(0)
 
 	addr, err := net.ResolveTCPAddr("tcp", "localhost:0")
 	assert.NoError(err)

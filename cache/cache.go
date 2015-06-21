@@ -3,6 +3,7 @@ package cache
 import (
 	"fmt"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/lomik/go-carbon/points"
@@ -25,21 +26,17 @@ type Settings struct {
 	QueryCapacity  int    // carbonlink query channel capacity
 }
 
-// SettingsQuery ...
-type SettingsQuery struct {
-	Settings  *Settings      // set new settings if != nil
-	ReplyChan chan *Settings // result of query
-}
-
 // Cache stores and aggregate metrics in memory
 type Cache struct {
+	sync.RWMutex
 	settings     *Settings
 	data         map[string]*points.Points
 	queue        queue
+	isRunning    bool                // current state of cache worker
 	inputChan    chan *points.Points // from receivers
 	outputChan   chan *points.Points // to persisters
 	queryChan    chan *Query         // from carbonlink
-	settingsChan chan *SettingsQuery // get or set settings via query to cache worker
+	settingsChan chan *settingsQuery // get or set settings via query to cache worker
 	exitChan     chan bool           // close for stop worker
 	size         int                 // points count in data
 	queryCnt     int                 // queries count in this checkpoint period
@@ -59,6 +56,7 @@ func New() *Cache {
 		settings:    settings,
 		data:        make(map[string]*points.Points, 0),
 		queue:       make(queue, 0),
+		isRunning:   false,
 		exitChan:    make(chan bool),
 		queryChan:   make(chan *Query, settings.QueryCapacity),
 		size:        0,
@@ -68,63 +66,6 @@ func New() *Cache {
 	return cache
 }
 
-// Settings returns copy of cache settings object
-func (c *Cache) Settings(newSettings *Settings) *Settings {
-	// change for running cache
-}
-
-// Get any key/values pair from Cache
-func (c *Cache) Get() *points.Points {
-	for {
-		size := len(c.queue)
-		if size == 0 {
-			break
-		}
-		cacheRecord := c.queue[size-1]
-		c.queue = c.queue[:size-1]
-
-		if values, ok := c.data[cacheRecord.metric]; ok {
-			return values
-		}
-	}
-	for _, values := range c.data {
-		return values
-	}
-	return nil
-}
-
-// Remove key from cache
-func (c *Cache) Remove(key string) {
-	if value, exists := c.data[key]; exists {
-		c.size -= len(value.Data)
-		delete(c.data, key)
-	}
-}
-
-// Pop return and remove next for save point from cache
-func (c *Cache) Pop() *points.Points {
-	v := c.Get()
-	if v != nil {
-		c.Remove(v.Metric)
-	}
-	return v
-}
-
-// Add points to cache
-func (c *Cache) Add(p *points.Points) {
-	if values, exists := c.data[p.Metric]; exists {
-		values.Data = append(values.Data, p.Data...)
-	} else {
-		c.data[p.Metric] = p
-	}
-	c.size += len(p.Data)
-}
-
-// Size returns size
-// func (c *Cache) Size() int {
-// 	return c.size
-// }
-
 type queueItem struct {
 	metric string
 	count  int
@@ -132,8 +73,8 @@ type queueItem struct {
 
 // stat send internal statistics of cache
 func (c *Cache) stat(metric string, value float64) {
-	key := fmt.Sprintf("%scache.%s", c.graphPrefix, metric)
-	c.Add(points.NowPoint(key, value))
+	key := fmt.Sprintf("%scache.%s", c.settings.GraphPrefix, metric)
+	c.add(points.NowPoint(key, value))
 	c.queue = append(c.queue, &queueItem{key, 1})
 }
 
@@ -181,6 +122,9 @@ func (c *Cache) doCheckpoint() {
 }
 
 func (c *Cache) worker() {
+	c.isRunning = true
+	defer func() { c.isRunning = false }()
+
 	var values *points.Points
 	var sendTo chan *points.Points
 
@@ -189,7 +133,7 @@ func (c *Cache) worker() {
 
 	for {
 		if values == nil {
-			values = c.Pop()
+			values = c.pop()
 
 			if values != nil {
 				sendTo = c.outputChan
@@ -199,9 +143,12 @@ func (c *Cache) worker() {
 		}
 
 		select {
-		case <-ticker.C: // checkpoint
+		// checkpoint
+		case <-ticker.C:
 			c.doCheckpoint()
-		case query := <-c.queryChan: // carbonlink
+
+		// carbonlink
+		case query := <-c.queryChan:
 			c.queryCnt++
 			reply := NewReply()
 
@@ -212,15 +159,21 @@ func (c *Cache) worker() {
 			}
 
 			query.ReplyChan <- reply
-		case sendTo <- values: // to persister
+
+		// to persister
+		case sendTo <- values:
 			values = nil
-		case msg := <-c.inputChan: // from receiver
-			if c.maxSize == 0 || c.size < c.maxSize {
-				c.Add(msg)
+
+		// from receiver
+		case msg := <-c.inputChan:
+			if c.settings.MaxSize == 0 || c.size < c.settings.MaxSize {
+				c.add(msg)
 			} else {
 				c.overflowCnt++
 			}
-		case <-c.exitChan: // exit
+
+		// exit
+		case <-c.exitChan:
 			break
 		}
 	}
@@ -230,7 +183,7 @@ func (c *Cache) worker() {
 // In returns input channel
 func (c *Cache) In() chan *points.Points {
 	if c.inputChan == nil {
-		c.inputChan = make(chan *points.Points, c.inputCapacity)
+		c.inputChan = make(chan *points.Points, c.settings.InputCapacity)
 	}
 	return c.inputChan
 }

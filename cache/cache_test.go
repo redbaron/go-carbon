@@ -7,44 +7,35 @@ import (
 	"time"
 
 	"github.com/lomik/go-carbon/points"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestCache(t *testing.T) {
+	assert := assert.New(t)
 
 	c := New()
 
-	c.Add(points.OnePoint("hello.world", 42, 10))
+	c.add(points.OnePoint("hello.world", 42, 10))
 
-	if c.Size() != 1 {
-		t.FailNow()
-	}
+	assert.Equal(1, c.size)
 
-	c.Add(points.OnePoint("hello.world", 15, 12))
+	c.add(points.OnePoint("hello.world", 15, 12))
 
-	if c.Size() != 2 {
-		t.FailNow()
-	}
+	assert.Equal(2, c.size)
 
-	values := c.Pop()
+	values := c.pop()
 
-	if values.Metric != "hello.world" {
-		t.FailNow()
-	}
-
-	if len(values.Data) != 2 {
-		t.FailNow()
-	}
-
-	if c.Size() != 0 {
-		t.FailNow()
-	}
+	assert.Equal("hello.world", values.Metric)
+	assert.Equal(2, len(values.Data))
+	assert.Equal(0, c.size)
 }
 
 func TestCacheCheckpoint(t *testing.T) {
-	cache := New()
-	cache.Start()
-	cache.SetOutputChanSize(0)
+	assert := assert.New(t)
 
+	cache := New()
+	cache.outputChan = make(chan *points.Points, 0)
+	cache.Start()
 	defer cache.Stop()
 
 	startTime := time.Now().Unix() - 60*60
@@ -61,12 +52,11 @@ func TestCacheCheckpoint(t *testing.T) {
 	}
 
 	time.Sleep(100 * time.Millisecond)
+	// @todo: test log
 	cache.doCheckpoint()
 
 	d := <-cache.Out()
-	if d.Metric != "metric0" {
-		t.Fatal("wrong metric received")
-	}
+	assert.Equal("metric0", d.Metric)
 
 	systemMetrics := []string{
 		"carbon.cache.inputLenAfterCheckpoint",
@@ -80,9 +70,7 @@ func TestCacheCheckpoint(t *testing.T) {
 
 	for _, metricName := range systemMetrics {
 		d = <-cache.Out()
-		if d.Metric != metricName {
-			t.Fatalf("%#v != %#v", d.Metric, metricName)
-		}
+		assert.Equal(metricName, d.Metric)
 	}
 
 	result := sizes[1:]
@@ -90,8 +78,6 @@ func TestCacheCheckpoint(t *testing.T) {
 
 	for _, size := range result {
 		d = <-cache.Out()
-		if len(d.Data) != size {
-			t.Fatalf("wrong metric received. Waiting metric with %d points, received with %d", size, len(d.Data))
-		}
+		assert.Equal(size, len(d.Data))
 	}
 }

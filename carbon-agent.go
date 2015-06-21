@@ -106,9 +106,11 @@ func main() {
 	}
 
 	core := cache.New()
-	core.SetGraphPrefix(cfg.Common.GraphPrefix)
-	core.SetMaxSize(cfg.Cache.MaxSize)
-	core.SetInputCapacity(cfg.Cache.InputBuffer)
+	coreSettings := core.Settings(nil)
+	coreSettings.GraphPrefix = cfg.Common.GraphPrefix
+	coreSettings.MaxSize = cfg.Cache.MaxSize
+	coreSettings.InputCapacity = cfg.Cache.InputBuffer
+	core.Settings(coreSettings)
 	core.Start()
 	defer core.Stop()
 
