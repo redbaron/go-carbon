@@ -30,19 +30,16 @@ type TCP struct {
 // NewTCP create new instance of TCP
 func NewTCP(out *points.Channel) *TCP {
 	return &TCP{
-		out:      out,
-		exit:     make(chan bool),
-		isPickle: false,
+		out:  out,
+		exit: make(chan bool),
 	}
 }
 
 // NewPickle create new instance of TCP with pickle listener enabled
 func NewPickle(out *points.Channel) *TCP {
-	return &TCP{
-		out:      out,
-		exit:     make(chan bool),
-		isPickle: true,
-	}
+	t := NewTCP(out)
+	t.isPickle = true
+	return t
 }
 
 // SetGraphPrefix for internal cache metrics
@@ -50,8 +47,10 @@ func (rcv *TCP) SetGraphPrefix(prefix string) {
 	rcv.graphPrefix = prefix
 }
 
-// Stat sends internal statistics to cache
-func (rcv *TCP) Stat(metric string, value float64) {
+// doCheckpoint sends internal statistics to cache
+func (rcv *TCP) doCheckpoint() {
+	graphPrefix := rcv.graphPrefix
+
 	var protocolPrefix string
 
 	if rcv.isPickle {
@@ -60,24 +59,23 @@ func (rcv *TCP) Stat(metric string, value float64) {
 		protocolPrefix = "tcp"
 	}
 
-	rcv.out.Chan() <- points.OnePoint(
-		fmt.Sprintf("%s%s.%s", rcv.graphPrefix, protocolPrefix, metric),
-		value,
-		time.Now().Unix(),
-	)
-}
+	statChan := rcv.out.Chan()
 
-// doCheckpoint sends internal statistics to cache
-func (rcv *TCP) doCheckpoint() {
-	cnt := atomic.LoadUint32(&rcv.metricsReceived)
-	atomic.AddUint32(&rcv.metricsReceived, -cnt)
-	rcv.Stat("metricsReceived", float64(cnt))
+	stat := func(metric string, value float64) {
+		key := fmt.Sprintf("%s%s.%s", graphPrefix, protocolPrefix, metric)
+		statChan <- points.NowPoint(key, value)
+	}
 
-	rcv.Stat("active", float64(atomic.LoadInt32(&rcv.active)))
+	statAtomicUint32 := func(metric string, addr *uint32) {
+		value := atomic.LoadUint32(addr)
+		atomic.AddUint32(addr, -value)
+		stat(metric, float64(value))
+	}
 
-	errors := atomic.LoadUint32(&rcv.errors)
-	atomic.AddUint32(&rcv.errors, -errors)
-	rcv.Stat("errors", float64(errors))
+	statAtomicUint32("metricsReceived", &rcv.metricsReceived)
+	statAtomicUint32("errors", &rcv.errors)
+
+	stat("active", float64(atomic.LoadInt32(&rcv.active)))
 }
 
 // Addr returns binded socket address. For bind port 0 in tests
