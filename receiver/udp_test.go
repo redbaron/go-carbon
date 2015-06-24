@@ -8,12 +8,13 @@ import (
 
 	"github.com/lomik/go-carbon/logging"
 	"github.com/lomik/go-carbon/points"
+
 	"github.com/stretchr/testify/assert"
 )
 
 type udpTestCase struct {
 	*testing.T
-	receiver *UDP
+	receiver *Receiver
 	conn     net.Conn
 	rcvChan  *points.Channel
 }
@@ -32,7 +33,7 @@ func newUDPTestCase(t *testing.T) *udpTestCase {
 	test.receiver = NewUDP(test.rcvChan)
 	// defer receiver.Stop()
 
-	if err = test.receiver.Listen(addr); err != nil {
+	if err = test.receiver.ListenUDP(addr); err != nil {
 		t.Fatal(err)
 	}
 
@@ -47,7 +48,9 @@ func newUDPTestCase(t *testing.T) *udpTestCase {
 }
 
 func (test *udpTestCase) EnableIncompleteLogging() *udpTestCase {
-	test.receiver.SetLogIncomplete(true)
+	test.receiver.EditSettings(func(settings *Settings) {
+		settings.LogIncomplete = true
+	})
 	return test
 }
 

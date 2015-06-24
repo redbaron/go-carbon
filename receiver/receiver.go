@@ -6,6 +6,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/Sirupsen/logrus"
 	"github.com/lomik/go-carbon/points"
 )
 
@@ -26,15 +27,16 @@ type Settings struct {
 // Receiver is base receiver
 type Receiver struct {
 	sync.RWMutex
-	settings        *Settings
-	settingsChanged chan bool
-	rcvType         rcvType
-	addr            net.Addr
-	out             *points.Channel
-	exit            chan bool
-	metricsReceived uint32 // received counter
-	errors          uint32 // errors counter
-	active          int32  // tcp, pickle. current connected
+	settings           *Settings
+	settingsChanged    chan bool
+	rcvType            rcvType
+	addr               net.Addr
+	out                *points.Channel
+	exit               chan bool
+	metricsReceived    uint32 // received counter
+	errors             uint32 // errors counter
+	active             int32  // tcp, pickle. current connected
+	incompleteReceived uint32 // udp. messages chunked by MTU
 }
 
 // new create new instance of Receiver
@@ -44,9 +46,10 @@ func new(out *points.Channel) *Receiver {
 		LogIncomplete: false,
 	}
 	return &Receiver{
-		settings: settings,
-		out:      out,
-		exit:     make(chan bool),
+		settings:        settings,
+		settingsChanged: make(chan bool),
+		out:             out,
+		exit:            make(chan bool),
 	}
 }
 
@@ -97,6 +100,23 @@ func (rcv *Receiver) Settings(newSettings *Settings) *Settings {
 	defer rcv.Unlock()
 
 	// change settings here
+	if newSettings.GraphPrefix != rcv.settings.GraphPrefix {
+		logrus.WithFields(logrus.Fields{
+			"old": rcv.settings.GraphPrefix,
+			"new": newSettings.GraphPrefix,
+		}).Infof("[%s] cache.GraphPrefix changed", rcv.TypeString())
+
+		rcv.settings.GraphPrefix = newSettings.GraphPrefix
+	}
+
+	if newSettings.LogIncomplete != rcv.settings.LogIncomplete {
+		logrus.WithFields(logrus.Fields{
+			"old": rcv.settings.LogIncomplete,
+			"new": newSettings.LogIncomplete,
+		}).Infof("[%s] %s.LogIncomplete changed", rcv.TypeString(), rcv.TypeString())
+
+		rcv.settings.LogIncomplete = newSettings.LogIncomplete
+	}
 
 	changed := rcv.settingsChanged
 	rcv.settingsChanged = make(chan bool)
@@ -133,5 +153,9 @@ func (rcv *Receiver) doCheckpoint() {
 
 	if rcv.rcvType == typeTCP || rcv.rcvType == typePICKLE {
 		stat("active", float64(atomic.LoadInt32(&rcv.active)))
+	}
+
+	if rcv.rcvType == typeUDP {
+		statAtomicUint32("incompleteReceived", &rcv.incompleteReceived)
 	}
 }

@@ -123,14 +123,14 @@ func main() {
 		}
 
 		udpListener := receiver.NewUDP(core.In())
-		udpListener.SetGraphPrefix(cfg.Common.GraphPrefix)
 
-		if udpCfg.LogIncomplete {
-			udpListener.SetLogIncomplete(true)
-		}
+		udpListener.EditSettings(func(settings *receiver.Settings) {
+			settings.GraphPrefix = cfg.Common.GraphPrefix
+			settings.LogIncomplete = udpCfg.LogIncomplete
+		})
 
 		defer udpListener.Stop()
-		if err = udpListener.Listen(udpAddr); err != nil {
+		if err = udpListener.ListenUDP(udpAddr); err != nil {
 			log.Fatal(err)
 		}
 	}

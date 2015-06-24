@@ -2,7 +2,6 @@ package receiver
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"net"
 	"strings"
@@ -14,24 +13,11 @@ import (
 	"github.com/Sirupsen/logrus"
 )
 
-// UDP receive metrics from UDP socket
-type UDP struct {
-	out                *points.Channel
-	exit               chan bool
-	graphPrefix        string
-	metricsReceived    uint32
-	incompleteReceived uint32
-	errors             uint32
-	logIncomplete      bool
-	conn               *net.UDPConn
-}
-
 // NewUDP create new instance of UDP
-func NewUDP(out *points.Channel) *UDP {
-	return &UDP{
-		out:  out,
-		exit: make(chan bool),
-	}
+func NewUDP(out *points.Channel) *Receiver {
+	rcv := new(out)
+	rcv.rcvType = typeUDP
+	return rcv
 }
 
 type incompleteRecord struct {
@@ -95,33 +81,6 @@ func (storage *incompleteStorage) checkAndClear() {
 	storage.purge()
 }
 
-// SetLogIncomplete enable or disable incomplete messages logging
-func (rcv *UDP) SetLogIncomplete(value bool) {
-	rcv.logIncomplete = value
-}
-
-// Addr returns binded socket address. For bind port 0 in tests
-func (rcv *UDP) Addr() net.Addr {
-	if rcv.conn == nil {
-		return nil
-	}
-	return rcv.conn.LocalAddr()
-}
-
-// SetGraphPrefix for internal cache metrics
-func (rcv *UDP) SetGraphPrefix(prefix string) {
-	rcv.graphPrefix = prefix
-}
-
-// Stat sends internal statistics to cache
-func (rcv *UDP) Stat(metric string, value float64) {
-	rcv.out.Chan() <- points.OnePoint(
-		fmt.Sprintf("%s%s", rcv.graphPrefix, metric),
-		value,
-		time.Now().Unix(),
-	)
-}
-
 func logIncomplete(peer *net.UDPAddr, message []byte, lastLine []byte) {
 	p1 := bytes.IndexByte(message, 0xa) // find first "\n"
 
@@ -142,13 +101,14 @@ func logIncomplete(peer *net.UDPAddr, message []byte, lastLine []byte) {
 	}
 }
 
-// Listen bind port. Receive messages and send to out channel
-func (rcv *UDP) Listen(addr *net.UDPAddr) error {
-	var err error
-	rcv.conn, err = net.ListenUDP("udp", addr)
+// ListenUDP bind port. Receive messages and send to out channel
+func (rcv *Receiver) ListenUDP(addr *net.UDPAddr) error {
+	conn, err := net.ListenUDP("udp", addr)
 	if err != nil {
 		return err
 	}
+
+	rcv.addr = conn.LocalAddr()
 
 	go func() {
 		ticker := time.NewTicker(time.Minute)
@@ -157,33 +117,17 @@ func (rcv *UDP) Listen(addr *net.UDPAddr) error {
 		for {
 			select {
 			case <-ticker.C:
-				metricsReceived := atomic.LoadUint32(&rcv.metricsReceived)
-				atomic.AddUint32(&rcv.metricsReceived, -metricsReceived)
-				rcv.Stat("udp.metricsReceived", float64(metricsReceived))
-
-				incompleteReceived := atomic.LoadUint32(&rcv.incompleteReceived)
-				atomic.AddUint32(&rcv.incompleteReceived, -incompleteReceived)
-				rcv.Stat("udp.incompleteReceived", float64(incompleteReceived))
-
-				errors := atomic.LoadUint32(&rcv.errors)
-				atomic.AddUint32(&rcv.errors, -errors)
-				rcv.Stat("udp.errors", float64(errors))
-
-				logrus.WithFields(logrus.Fields{
-					"metricsReceived":    metricsReceived,
-					"incompleteReceived": incompleteReceived,
-					"errors":             errors,
-				}).Info("[udp] doCheckpoint()")
+				rcv.doCheckpoint()
 
 			case <-rcv.exit:
-				rcv.conn.Close()
+				conn.Close()
 				return
 			}
 		}
 	}()
 
 	go func() {
-		defer rcv.conn.Close()
+		defer conn.Close()
 
 		var buf [2048]byte
 
@@ -194,7 +138,7 @@ func (rcv *UDP) Listen(addr *net.UDPAddr) error {
 		out, outChanged := rcv.out.Current()
 
 		for {
-			rlen, peer, err := rcv.conn.ReadFromUDP(buf[:])
+			rlen, peer, err := conn.ReadFromUDP(buf[:])
 			if err != nil {
 				if strings.Contains(err.Error(), "use of closed network connection") {
 					break
@@ -220,7 +164,7 @@ func (rcv *UDP) Listen(addr *net.UDPAddr) error {
 					if err == io.EOF {
 						if len(line) > 0 { // incomplete line received
 
-							if rcv.logIncomplete {
+							if rcv.settings.LogIncomplete {
 								logIncomplete(peer, buf[:rlen], line)
 							}
 
@@ -254,9 +198,4 @@ func (rcv *UDP) Listen(addr *net.UDPAddr) error {
 	}()
 
 	return nil
-}
-
-// Stop all listeners
-func (rcv *UDP) Stop() {
-	close(rcv.exit)
 }
