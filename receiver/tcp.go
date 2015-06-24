@@ -3,7 +3,6 @@ package receiver
 import (
 	"bufio"
 	"encoding/binary"
-	"fmt"
 	"io"
 	"net"
 	"strings"
@@ -15,78 +14,21 @@ import (
 	"github.com/Sirupsen/logrus"
 )
 
-// TCP receive metrics from TCP connections
-type TCP struct {
-	out             *points.Channel
-	exit            chan bool
-	graphPrefix     string
-	metricsReceived uint32
-	errors          uint32
-	active          int32 // counter
-	listener        *net.TCPListener
-	isPickle        bool
+// NewTCP create new instance of TCP Receiver
+func NewTCP(out *points.Channel) *Receiver {
+	rcv := new(out)
+	rcv.rcvType = typeTCP
+	return rcv
 }
 
-// NewTCP create new instance of TCP
-func NewTCP(out *points.Channel) *TCP {
-	return &TCP{
-		out:  out,
-		exit: make(chan bool),
-	}
+// NewPickle create new instance of Receiver with pickle listener enabled
+func NewPickle(out *points.Channel) *Receiver {
+	rcv := new(out)
+	rcv.rcvType = typePICKLE
+	return rcv
 }
 
-// NewPickle create new instance of TCP with pickle listener enabled
-func NewPickle(out *points.Channel) *TCP {
-	t := NewTCP(out)
-	t.isPickle = true
-	return t
-}
-
-// SetGraphPrefix for internal cache metrics
-func (rcv *TCP) SetGraphPrefix(prefix string) {
-	rcv.graphPrefix = prefix
-}
-
-// doCheckpoint sends internal statistics to cache
-func (rcv *TCP) doCheckpoint() {
-	graphPrefix := rcv.graphPrefix
-
-	var protocolPrefix string
-
-	if rcv.isPickle {
-		protocolPrefix = "pickle"
-	} else {
-		protocolPrefix = "tcp"
-	}
-
-	statChan := rcv.out.Chan()
-
-	stat := func(metric string, value float64) {
-		key := fmt.Sprintf("%s%s.%s", graphPrefix, protocolPrefix, metric)
-		statChan <- points.NowPoint(key, value)
-	}
-
-	statAtomicUint32 := func(metric string, addr *uint32) {
-		value := atomic.LoadUint32(addr)
-		atomic.AddUint32(addr, -value)
-		stat(metric, float64(value))
-	}
-
-	statAtomicUint32("metricsReceived", &rcv.metricsReceived)
-	statAtomicUint32("errors", &rcv.errors)
-
-	stat("active", float64(atomic.LoadInt32(&rcv.active)))
-}
-
-// Addr returns binded socket address. For bind port 0 in tests
-func (rcv *TCP) Addr() net.Addr {
-	if rcv.listener == nil {
-		return nil
-	}
-	return rcv.listener.Addr()
-}
-
-func (rcv *TCP) handleConnection(conn net.Conn) {
+func (rcv *Receiver) handleTCP(conn net.Conn) {
 	atomic.AddInt32(&rcv.active, 1)
 	defer atomic.AddInt32(&rcv.active, -1)
 
@@ -103,7 +45,7 @@ func (rcv *TCP) handleConnection(conn net.Conn) {
 		if err != nil {
 			if err == io.EOF {
 				if len(line) > 0 {
-					logrus.Warningf("[tcp] Unfinished line: %#v", line)
+					logrus.Warningf("[%s] Unfinished line: %#v", rcv.TypeString(), line)
 				}
 			} else {
 				atomic.AddUint32(&rcv.errors, 1)
@@ -129,7 +71,7 @@ func (rcv *TCP) handleConnection(conn net.Conn) {
 	}
 }
 
-func (rcv *TCP) handlePickle(conn net.Conn) {
+func (rcv *Receiver) handlePickle(conn net.Conn) {
 	atomic.AddInt32(&rcv.active, 1)
 	defer atomic.AddInt32(&rcv.active, -1)
 
@@ -152,7 +94,7 @@ func (rcv *TCP) handlePickle(conn net.Conn) {
 			}
 
 			atomic.AddUint32(&rcv.errors, 1)
-			logrus.Warningf("[pickle] Can't read message length: %s", err.Error())
+			logrus.Warningf("[%s] Can't read message length: %s", rcv.TypeString(), err.Error())
 			return
 		}
 
@@ -162,7 +104,7 @@ func (rcv *TCP) handlePickle(conn net.Conn) {
 		// Read remainder of pickle packet into byte array
 		if err = binary.Read(reader, binary.BigEndian, data); err != nil {
 			atomic.AddUint32(&rcv.errors, 1)
-			logrus.Warningf("[pickle] Can't read message body: %s", err.Error())
+			logrus.Warningf("[%s] Can't read message body: %s", rcv.TypeString(), err.Error())
 			return
 		}
 
@@ -170,7 +112,7 @@ func (rcv *TCP) handlePickle(conn net.Conn) {
 
 		if err != nil {
 			atomic.AddUint32(&rcv.errors, 1)
-			logrus.Infof("[pickle] Can't unpickle message: %s", err.Error())
+			logrus.Infof("[%s] Can't unpickle message: %s", rcv.TypeString(), err.Error())
 			return
 		}
 
@@ -187,13 +129,15 @@ func (rcv *TCP) handlePickle(conn net.Conn) {
 	}
 }
 
-// Listen bind port. Receive messages and send to out channel
-func (rcv *TCP) Listen(addr *net.TCPAddr) error {
-	var err error
-	rcv.listener, err = net.ListenTCP("tcp", addr)
+// ListenTCP bind port. Receive messages and send to out channel
+func (rcv *Receiver) ListenTCP(addr *net.TCPAddr) error {
+
+	listener, err := net.ListenTCP("tcp", addr)
 	if err != nil {
 		return err
 	}
+
+	rcv.addr = listener.Addr()
 
 	go func() {
 		ticker := time.NewTicker(time.Minute)
@@ -204,28 +148,28 @@ func (rcv *TCP) Listen(addr *net.TCPAddr) error {
 			case <-ticker.C:
 				rcv.doCheckpoint()
 			case <-rcv.exit:
-				rcv.listener.Close()
+				listener.Close()
 				return
 			}
 		}
 	}()
 
-	handler := rcv.handleConnection
-	if rcv.isPickle {
+	handler := rcv.handleTCP
+	if rcv.rcvType == typePICKLE {
 		handler = rcv.handlePickle
 	}
 
 	go func() {
-		defer rcv.listener.Close()
+		defer listener.Close()
 
 		for {
 
-			conn, err := rcv.listener.Accept()
+			conn, err := listener.Accept()
 			if err != nil {
 				if strings.Contains(err.Error(), "use of closed network connection") {
 					break
 				}
-				logrus.Warningf("[tcp] Failed to accept connection: %s", err)
+				logrus.Warningf("[%s] Failed to accept connection: %s", rcv.TypeString(), err)
 				continue
 			}
 
@@ -235,9 +179,4 @@ func (rcv *TCP) Listen(addr *net.TCPAddr) error {
 	}()
 
 	return nil
-}
-
-// Stop all listeners
-func (rcv *TCP) Stop() {
-	close(rcv.exit)
 }

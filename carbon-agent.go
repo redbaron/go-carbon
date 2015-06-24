@@ -146,10 +146,12 @@ func main() {
 		}
 
 		tcpListener := receiver.NewTCP(core.In())
-		tcpListener.SetGraphPrefix(cfg.Common.GraphPrefix)
+		tcpListener.EditSettings(func(settings *receiver.Settings) {
+			settings.GraphPrefix = cfg.Common.GraphPrefix
+		})
 
 		defer tcpListener.Stop()
-		if err = tcpListener.Listen(tcpAddr); err != nil {
+		if err = tcpListener.ListenTCP(tcpAddr); err != nil {
 			log.Fatal(err)
 		}
 	}
@@ -165,10 +167,12 @@ func main() {
 		}
 
 		pickleListener := receiver.NewPickle(core.In())
-		pickleListener.SetGraphPrefix(cfg.Common.GraphPrefix)
+		pickleListener.EditSettings(func(settings *receiver.Settings) {
+			settings.GraphPrefix = cfg.Common.GraphPrefix
+		})
 
 		defer pickleListener.Stop()
-		if err = pickleListener.Listen(pickleAddr); err != nil {
+		if err = pickleListener.ListenTCP(pickleAddr); err != nil {
 			log.Fatal(err)
 		}
 	}

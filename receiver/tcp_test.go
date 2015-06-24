@@ -10,7 +10,7 @@ import (
 
 type tcpTestCase struct {
 	*testing.T
-	receiver *TCP
+	receiver *Receiver
 	conn     net.Conn
 	rcvChan  *points.Channel
 }
@@ -29,7 +29,7 @@ func newTCPTestCase(t *testing.T) *tcpTestCase {
 	test.receiver = NewTCP(test.rcvChan)
 	// defer receiver.Stop()
 
-	if err = test.receiver.Listen(addr); err != nil {
+	if err = test.receiver.ListenTCP(addr); err != nil {
 		t.Fatal(err)
 	}
 
