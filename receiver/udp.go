@@ -81,28 +81,22 @@ func (storage *incompleteStorage) checkAndClear() {
 	storage.purge()
 }
 
-type incompleteLogRecord struct {
-	peer     *net.UDPAddr
-	message  []byte
-	lastLine []byte
-}
+func logIncomplete(peer *net.UDPAddr, message []byte, lastLine []byte) {
+	p1 := bytes.IndexByte(message, 0xa) // find first "\n"
 
-func logIncomplete(r *incompleteLogRecord) {
-	p1 := bytes.IndexByte(r.message, 0xa) // find first "\n"
-
-	if p1 != -1 && p1+len(r.lastLine) < len(r.message)-10 { // print short version
+	if p1 != -1 && p1+len(lastLine) < len(message)-10 { // print short version
 		logrus.Warningf(
 			"[udp] incomplete message from %s: \"%s\\n...(%d bytes)...\\n%s\"",
-			r.peer.String(),
-			string(r.message[:p1]),
-			len(r.message)-p1-len(r.lastLine)-2,
-			string(r.lastLine),
+			peer.String(),
+			string(message[:p1]),
+			len(message)-p1-len(lastLine)-2,
+			string(lastLine),
 		)
 	} else { // print full
 		logrus.Warningf(
 			"[udp] incomplete message from %s: %#v",
-			r.peer.String(),
-			string(r.message),
+			peer.String(),
+			string(message),
 		)
 	}
 }
@@ -116,13 +110,12 @@ func (rcv *Receiver) ListenUDP(addr *net.UDPAddr) error {
 
 	rcv.addr = conn.LocalAddr()
 
-	incompleteLogChan := make(chan *incompleteLogRecord, 128)
-
 	go rcv.checkpointWorker()
+
+	isLogIncomplete := rcv.settings.LogIncomplete
 
 	go func() {
 		var settingsChanged chan bool
-		var isLogIncomplete bool
 
 		refreshSettings := func() {
 			rcv.RLock()
@@ -139,12 +132,6 @@ func (rcv *Receiver) ListenUDP(addr *net.UDPAddr) error {
 			// settings updated
 			case <-settingsChanged:
 				refreshSettings()
-
-			// log incomplete
-			case r := <-incompleteLogChan:
-				if isLogIncomplete {
-					logIncomplete(r)
-				}
 
 			case <-rcv.exit:
 				conn.Close()
@@ -191,10 +178,8 @@ func (rcv *Receiver) ListenUDP(addr *net.UDPAddr) error {
 					if err == io.EOF {
 						if len(line) > 0 { // incomplete line received
 
-							incompleteLogChan <- &incompleteLogRecord{
-								peer:     peer,
-								message:  buf[:rlen],
-								lastLine: line,
+							if isLogIncomplete {
+								logIncomplete(peer, buf[:rlen], line)
 							}
 
 							lines.store(peer.String(), line)
