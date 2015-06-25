@@ -5,6 +5,7 @@ import (
 	"net"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/lomik/go-carbon/points"
@@ -128,14 +129,8 @@ func (rcv *Receiver) Settings(newSettings *Settings) *Settings {
 }
 
 // doCheckpoint sends internal statistics to cache
-func (rcv *Receiver) doCheckpoint() {
-	rcv.RLock()
-	graphPrefix := rcv.settings.GraphPrefix
-	rcv.RUnlock()
-
+func (rcv *Receiver) doCheckpoint(statChan chan *points.Points, graphPrefix string) {
 	protocolPrefix := rcv.TypeString()
-
-	statChan := rcv.out.Chan()
 
 	stat := func(metric string, value float64) {
 		key := fmt.Sprintf("%s%s.%s", graphPrefix, protocolPrefix, metric)
@@ -157,5 +152,43 @@ func (rcv *Receiver) doCheckpoint() {
 
 	if rcv.rcvType == typeUDP {
 		statAtomicUint32("incompleteReceived", &rcv.incompleteReceived)
+	}
+}
+
+func (rcv *Receiver) checkpointWorker() {
+	ticker := time.NewTicker(time.Minute)
+	defer ticker.Stop()
+
+	var graphPrefix string
+	var settingsChanged chan bool
+
+	refreshSettings := func() {
+		rcv.RLock()
+		defer rcv.RUnlock()
+
+		settingsChanged = rcv.settingsChanged
+		graphPrefix = rcv.settings.GraphPrefix
+	}
+
+	refreshSettings()
+
+	out, outChanged := rcv.out.Current()
+
+	for {
+		select {
+		case <-ticker.C:
+			rcv.doCheckpoint(out, graphPrefix)
+
+		// settings updated
+		case <-settingsChanged:
+			refreshSettings()
+
+		// changed output channel
+		case <-outChanged:
+			out, outChanged = rcv.out.Current()
+
+		case <-rcv.exit:
+			return
+		}
 	}
 }

@@ -139,19 +139,11 @@ func (rcv *Receiver) ListenTCP(addr *net.TCPAddr) error {
 
 	rcv.addr = listener.Addr()
 
-	go func() {
-		ticker := time.NewTicker(time.Minute)
-		defer ticker.Stop()
+	go rcv.checkpointWorker()
 
-		for {
-			select {
-			case <-ticker.C:
-				rcv.doCheckpoint()
-			case <-rcv.exit:
-				listener.Close()
-				return
-			}
-		}
+	go func() {
+		<-rcv.exit
+		listener.Close()
 	}()
 
 	handler := rcv.handleTCP
