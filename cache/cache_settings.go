@@ -9,12 +9,12 @@ import (
 // Settings ...
 type Settings struct {
 	sync.RWMutex
-	settingsChanged chan bool // subscribe to channel for notify about changed settings
-	cache           *Cache    // for apply new settings
-	MaxSize         int       // cache capacity (points)
-	GraphPrefix     string    // prefix for internal metrics
-	InputCapacity   int       // input channel capacity
-	OutputCapacity  int       // output channel capacity
+	changed        chan bool // subscribe to channel for notify about changed settings
+	cache          *Cache    // for apply new settings
+	MaxSize        int       // cache capacity (points)
+	GraphPrefix    string    // prefix for internal metrics
+	InputCapacity  int       // input channel capacity
+	OutputCapacity int       // output channel capacity
 }
 
 // Copy returns copy of settings object
@@ -71,6 +71,10 @@ func (s *Settings) Apply() error {
 			cache.outputChan.Resize(obj.OutputCapacity)
 		}
 	}
+
+	changed := obj.changed
+	obj.changed = make(chan bool)
+	close(changed)
 
 	return nil
 }
