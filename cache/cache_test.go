@@ -34,9 +34,11 @@ func TestCacheCheckpoint(t *testing.T) {
 	assert := assert.New(t)
 
 	cache := New()
-	cache.EditSettings(func(settings *Settings) {
-		settings.OutputCapacity = 0
-	})
+
+	settings := cache.Settings()
+	settings.OutputCapacity = 0
+	assert.NoError(settings.Apply())
+
 	cache.Start()
 	defer cache.Stop()
 

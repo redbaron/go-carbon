@@ -106,11 +106,14 @@ func main() {
 	}
 
 	core := cache.New()
-	coreSettings := core.Settings(nil)
+	coreSettings := core.Settings()
 	coreSettings.GraphPrefix = cfg.Common.GraphPrefix
 	coreSettings.MaxSize = cfg.Cache.MaxSize
 	coreSettings.InputCapacity = cfg.Cache.InputBuffer
-	core.Settings(coreSettings)
+	if err := coreSettings.Apply(); err != nil {
+		logrus.Fatal(err)
+		return
+	}
 	core.Start()
 	defer core.Stop()
 

@@ -73,11 +73,12 @@ func TestCacheSettings(t *testing.T) {
 		for _, testCase := range table {
 			for _, value := range testCase.Valid {
 				logging.Test(func(log *bytes.Buffer) {
-					cache.EditSettings(func(settings *Settings) {
-						testCase.Setter(settings, value)
-					})
 
-					assert.Contains(log.String(), fmt.Sprintf("new=%#v", value))
+					settings := cache.Settings()
+					testCase.Setter(settings, value)
+					assert.NoError(settings.Apply())
+
+					assert.Contains(log.String(), fmt.Sprintf("-> %#v", value))
 					if testCase.Validate != nil {
 						testCase.Validate(cache, value)
 					}

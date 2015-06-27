@@ -36,9 +36,11 @@ func TestCarbonlink(t *testing.T) {
 	assert := assert.New(t)
 
 	cache := New()
-	cache.EditSettings(func(settings *Settings) {
-		settings.OutputCapacity = 0
-	})
+
+	settings := cache.Settings()
+	settings.OutputCapacity = 0
+	assert.NoError(settings.Apply())
+
 	cache.Start()
 
 	msg1 := points.OnePoint(
@@ -153,9 +155,11 @@ func TestCarbonlinkErrors(t *testing.T) {
 	assert := assert.New(t)
 
 	cache := New()
-	cache.EditSettings(func(settings *Settings) {
-		settings.OutputCapacity = 0
-	})
+
+	settings := cache.Settings()
+	settings.OutputCapacity = 0
+	assert.NoError(settings.Apply())
+
 	cache.Start()
 
 	addr, err := net.ResolveTCPAddr("tcp", "localhost:0")

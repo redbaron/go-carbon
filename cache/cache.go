@@ -17,14 +17,6 @@ func (v queue) Len() int           { return len(v) }
 func (v queue) Swap(i, j int)      { v[i], v[j] = v[j], v[i] }
 func (v queue) Less(i, j int) bool { return v[i].count < v[j].count }
 
-// Settings ...
-type Settings struct {
-	MaxSize        int    // cache capacity (points)
-	GraphPrefix    string // prefix for internal metrics
-	InputCapacity  int    // input channel capacity
-	OutputCapacity int    // output channel capacity
-}
-
 // Cache stores and aggregate metrics in memory
 type Cache struct {
 	sync.RWMutex
@@ -62,6 +54,7 @@ func New() *Cache {
 		queryCnt:        0,
 		overflowCnt:     0,
 	}
+	settings.cache = cache
 	return cache
 }
 

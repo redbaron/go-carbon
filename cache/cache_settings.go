@@ -1,77 +1,81 @@
 package cache
 
-import "github.com/Sirupsen/logrus"
+import (
+	"sync"
 
-// Settings returns copy of cache settings object
-func (c *Cache) Settings(newSettings *Settings) *Settings {
+	"github.com/Sirupsen/logrus"
+)
 
-	if newSettings == nil { // read-only
-		c.RLock()
-		defer c.RUnlock()
-
-		s := *c.settings
-		return &s
-	}
-
-	c.Lock()
-	defer c.Unlock()
-
-	if newSettings.MaxSize != c.settings.MaxSize {
-		logrus.WithFields(logrus.Fields{
-			"old": c.settings.MaxSize,
-			"new": newSettings.MaxSize,
-		}).Info("[cache] cache.MaxSize changed")
-
-		c.settings.MaxSize = newSettings.MaxSize
-	}
-
-	if newSettings.GraphPrefix != c.settings.GraphPrefix {
-		logrus.WithFields(logrus.Fields{
-			"old": c.settings.GraphPrefix,
-			"new": newSettings.GraphPrefix,
-		}).Info("[cache] cache.GraphPrefix changed")
-
-		c.settings.GraphPrefix = newSettings.GraphPrefix
-	}
-
-	if newSettings.InputCapacity != c.settings.InputCapacity {
-		logrus.WithFields(logrus.Fields{
-			"old": c.settings.InputCapacity,
-			"new": newSettings.InputCapacity,
-		}).Info("[cache] cache.InputCapacity changed")
-
-		c.settings.InputCapacity = newSettings.InputCapacity
-		if c.inputChan != nil {
-			c.inputChan.Resize(c.settings.InputCapacity)
-		}
-	}
-
-	if newSettings.OutputCapacity != c.settings.OutputCapacity {
-		logrus.WithFields(logrus.Fields{
-			"old": c.settings.OutputCapacity,
-			"new": newSettings.OutputCapacity,
-		}).Info("[cache] cache.OutputCapacity changed")
-
-		c.settings.OutputCapacity = newSettings.OutputCapacity
-		if c.outputChan != nil {
-			c.outputChan.Resize(c.settings.OutputCapacity)
-		}
-	}
-
-	changed := c.settingsChanged
-	c.settingsChanged = make(chan bool)
-	close(changed)
-
-	s := *c.settings
-
-	return &s
+// Settings ...
+type Settings struct {
+	sync.RWMutex
+	settingsChanged chan bool // subscribe to channel for notify about changed settings
+	cache           *Cache    // for apply new settings
+	MaxSize         int       // cache capacity (points)
+	GraphPrefix     string    // prefix for internal metrics
+	InputCapacity   int       // input channel capacity
+	OutputCapacity  int       // output channel capacity
 }
 
-// EditSettings calls callback with settings instance. Not raises any error on change settings timeout
-func (c *Cache) EditSettings(callback func(*Settings)) {
-	settings := c.Settings(nil)
-	if settings != nil {
-		callback(settings)
-		c.Settings(settings)
+// Copy returns copy of settings object
+func (s *Settings) Copy() *Settings {
+	s.RLock()
+	defer s.RUnlock()
+
+	c := *s
+	return &c
+}
+
+// Validate ...
+func (s *Settings) Validate() error {
+	return nil
+}
+
+// Apply ...
+func (s *Settings) Apply() error {
+	if err := s.Validate(); err != nil {
+		return err
 	}
+
+	cache := s.cache
+	obj := cache.settings
+
+	obj.Lock()
+	defer obj.Unlock()
+
+	if s.MaxSize != obj.MaxSize {
+		logrus.Infof("[cache] cache.MaxSize changed: %#v -> %#v", obj.MaxSize, s.MaxSize)
+		obj.MaxSize = s.MaxSize
+	}
+
+	if s.GraphPrefix != obj.GraphPrefix {
+		logrus.Infof("[cache] cache.GraphPrefix changed: %#v -> %#v", obj.GraphPrefix, s.GraphPrefix)
+		obj.GraphPrefix = s.GraphPrefix
+	}
+
+	if s.InputCapacity != obj.InputCapacity {
+		logrus.Infof("[cache] cache.InputCapacity changed: %#v -> %#v", obj.InputCapacity, s.InputCapacity)
+
+		obj.InputCapacity = s.InputCapacity
+		if cache.inputChan != nil {
+			cache.inputChan.Resize(obj.InputCapacity)
+		}
+	}
+
+	if s.OutputCapacity != obj.OutputCapacity {
+		logrus.Infof("[cache] cache.OutputCapacity changed: %#v -> %#v", obj.OutputCapacity, s.OutputCapacity)
+
+		obj.OutputCapacity = s.OutputCapacity
+
+		if cache.outputChan != nil {
+			cache.outputChan.Resize(obj.OutputCapacity)
+		}
+	}
+
+	return nil
+}
+
+// Settings returns copy of cache settings object
+func (c *Cache) Settings() *Settings {
+	return c.settings.Copy()
 }
