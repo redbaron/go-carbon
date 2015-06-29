@@ -48,9 +48,9 @@ func newUDPTestCase(t *testing.T) *udpTestCase {
 }
 
 func (test *udpTestCase) EnableIncompleteLogging() *udpTestCase {
-	test.receiver.EditSettings(func(settings *Settings) {
-		settings.LogIncomplete = true
-	})
+	settings := test.receiver.Settings()
+	settings.LogIncomplete = true
+	settings.Apply()
 	return test
 }
 

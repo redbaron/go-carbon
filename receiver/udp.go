@@ -118,10 +118,10 @@ func (rcv *Receiver) ListenUDP(addr *net.UDPAddr) error {
 		var settingsChanged chan bool
 
 		refreshSettings := func() {
-			rcv.RLock()
-			defer rcv.RUnlock()
+			rcv.settings.RLock()
+			defer rcv.settings.RUnlock()
 
-			settingsChanged = rcv.settingsChanged
+			settingsChanged = rcv.settings.changed
 			isLogIncomplete = rcv.settings.LogIncomplete
 		}
 

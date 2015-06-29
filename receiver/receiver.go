@@ -3,11 +3,9 @@ package receiver
 import (
 	"fmt"
 	"net"
-	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/Sirupsen/logrus"
 	"github.com/lomik/go-carbon/points"
 )
 
@@ -19,17 +17,9 @@ const (
 	typePICKLE
 )
 
-// Settings unified for TCP, Pickle and UDP receivers. Has all settings for all receivers
-type Settings struct {
-	GraphPrefix   string // prefix for internal metrics
-	LogIncomplete bool   // log incomplete messages in UDP receiver
-}
-
 // Receiver is base receiver
 type Receiver struct {
-	sync.RWMutex
 	settings           *Settings
-	settingsChanged    chan bool
 	rcvType            rcvType
 	addr               net.Addr
 	out                *points.Channel
@@ -45,13 +35,15 @@ func new(out *points.Channel) *Receiver {
 	settings := &Settings{
 		GraphPrefix:   "carbon.",
 		LogIncomplete: false,
+		changed:       make(chan bool),
 	}
-	return &Receiver{
-		settings:        settings,
-		settingsChanged: make(chan bool),
-		out:             out,
-		exit:            make(chan bool),
+	rcv := &Receiver{
+		settings: settings,
+		out:      out,
+		exit:     make(chan bool),
 	}
+	settings.rcv = rcv
+	return rcv
 }
 
 // Addr returns binded socket address. For bind port 0 in tests
@@ -75,57 +67,6 @@ func (rcv *Receiver) TypeString() string {
 		return "pickle"
 	}
 	return "unknown"
-}
-
-// EditSettings calls callback with settings instance. Not raises any error on change settings timeout
-func (rcv *Receiver) EditSettings(callback func(*Settings)) {
-	settings := rcv.Settings(nil)
-	if settings != nil {
-		callback(settings)
-		rcv.Settings(settings)
-	}
-}
-
-// Settings returns copy of cache settings object
-func (rcv *Receiver) Settings(newSettings *Settings) *Settings {
-
-	if newSettings == nil { // read-only
-		rcv.RLock()
-		defer rcv.RUnlock()
-
-		s := *rcv.settings
-		return &s
-	}
-
-	rcv.Lock()
-	defer rcv.Unlock()
-
-	// change settings here
-	if newSettings.GraphPrefix != rcv.settings.GraphPrefix {
-		logrus.WithFields(logrus.Fields{
-			"old": rcv.settings.GraphPrefix,
-			"new": newSettings.GraphPrefix,
-		}).Infof("[%s] cache.GraphPrefix changed", rcv.TypeString())
-
-		rcv.settings.GraphPrefix = newSettings.GraphPrefix
-	}
-
-	if newSettings.LogIncomplete != rcv.settings.LogIncomplete {
-		logrus.WithFields(logrus.Fields{
-			"old": rcv.settings.LogIncomplete,
-			"new": newSettings.LogIncomplete,
-		}).Infof("[%s] %s.LogIncomplete changed", rcv.TypeString(), rcv.TypeString())
-
-		rcv.settings.LogIncomplete = newSettings.LogIncomplete
-	}
-
-	changed := rcv.settingsChanged
-	rcv.settingsChanged = make(chan bool)
-	close(changed)
-
-	s := *rcv.settings
-
-	return &s
 }
 
 // doCheckpoint sends internal statistics to cache
@@ -163,10 +104,10 @@ func (rcv *Receiver) checkpointWorker() {
 	var settingsChanged chan bool
 
 	refreshSettings := func() {
-		rcv.RLock()
-		defer rcv.RUnlock()
+		rcv.settings.RLock()
+		defer rcv.settings.RUnlock()
 
-		settingsChanged = rcv.settingsChanged
+		settingsChanged = rcv.settings.changed
 		graphPrefix = rcv.settings.GraphPrefix
 	}
 

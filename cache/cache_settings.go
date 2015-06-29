@@ -44,17 +44,17 @@ func (s *Settings) Apply() error {
 	defer obj.Unlock()
 
 	if s.MaxSize != obj.MaxSize {
-		logrus.Infof("[cache] cache.MaxSize changed: %#v -> %#v", obj.MaxSize, s.MaxSize)
+		logrus.Infof("[cache] MaxSize changed: %#v -> %#v", obj.MaxSize, s.MaxSize)
 		obj.MaxSize = s.MaxSize
 	}
 
 	if s.GraphPrefix != obj.GraphPrefix {
-		logrus.Infof("[cache] cache.GraphPrefix changed: %#v -> %#v", obj.GraphPrefix, s.GraphPrefix)
+		logrus.Infof("[cache] GraphPrefix changed: %#v -> %#v", obj.GraphPrefix, s.GraphPrefix)
 		obj.GraphPrefix = s.GraphPrefix
 	}
 
 	if s.InputCapacity != obj.InputCapacity {
-		logrus.Infof("[cache] cache.InputCapacity changed: %#v -> %#v", obj.InputCapacity, s.InputCapacity)
+		logrus.Infof("[cache] InputCapacity changed: %#v -> %#v", obj.InputCapacity, s.InputCapacity)
 
 		obj.InputCapacity = s.InputCapacity
 		if cache.inputChan != nil {
@@ -63,7 +63,7 @@ func (s *Settings) Apply() error {
 	}
 
 	if s.OutputCapacity != obj.OutputCapacity {
-		logrus.Infof("[cache] cache.OutputCapacity changed: %#v -> %#v", obj.OutputCapacity, s.OutputCapacity)
+		logrus.Infof("[cache] OutputCapacity changed: %#v -> %#v", obj.OutputCapacity, s.OutputCapacity)
 
 		obj.OutputCapacity = s.OutputCapacity
 

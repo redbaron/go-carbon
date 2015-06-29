@@ -57,8 +57,8 @@ type Config struct {
 	Common     commonConfig     `toml:"common"`
 	Whisper    whisperConfig    `toml:"whisper"`
 	Cache      cacheConfig      `toml:"cache"`
-	Udp        udpConfig        `toml:"udp"`
-	Tcp        tcpConfig        `toml:"tcp"`
+	UDP        udpConfig        `toml:"udp"`
+	TCP        tcpConfig        `toml:"tcp"`
 	Pickle     tcpConfig        `toml:"pickle"`
 	Carbonlink carbonlinkConfig `toml:"carbonlink"`
 	Pprof      pprofConfig      `toml:"pprof"`
@@ -89,12 +89,12 @@ func NewConfig() *Config {
 			MaxSize:     1000000,
 			InputBuffer: 51200,
 		},
-		Udp: udpConfig{
+		UDP: udpConfig{
 			Listen:        ":2003",
 			Enabled:       true,
 			LogIncomplete: false,
 		},
-		Tcp: tcpConfig{
+		TCP: tcpConfig{
 			Listen:  ":2003",
 			Enabled: true,
 		},

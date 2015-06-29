@@ -118,7 +118,7 @@ func main() {
 	defer core.Stop()
 
 	/* UDP start */
-	udpCfg := cfg.Udp
+	udpCfg := cfg.UDP
 	if udpCfg.Enabled {
 		udpAddr, err := net.ResolveUDPAddr("udp", udpCfg.Listen)
 		if err != nil {
@@ -127,10 +127,10 @@ func main() {
 
 		udpListener := receiver.NewUDP(core.In())
 
-		udpListener.EditSettings(func(settings *receiver.Settings) {
-			settings.GraphPrefix = cfg.Common.GraphPrefix
-			settings.LogIncomplete = udpCfg.LogIncomplete
-		})
+		udpSettings := udpListener.Settings()
+		udpSettings.GraphPrefix = cfg.Common.GraphPrefix
+		udpSettings.LogIncomplete = udpCfg.LogIncomplete
+		udpSettings.Apply()
 
 		defer udpListener.Stop()
 		if err = udpListener.ListenUDP(udpAddr); err != nil {
@@ -140,7 +140,7 @@ func main() {
 	/* UDP end */
 
 	/* TCP start */
-	tcpCfg := cfg.Tcp
+	tcpCfg := cfg.TCP
 
 	if tcpCfg.Enabled {
 		tcpAddr, err := net.ResolveTCPAddr("tcp", tcpCfg.Listen)
@@ -149,9 +149,10 @@ func main() {
 		}
 
 		tcpListener := receiver.NewTCP(core.In())
-		tcpListener.EditSettings(func(settings *receiver.Settings) {
-			settings.GraphPrefix = cfg.Common.GraphPrefix
-		})
+
+		tcpSettings := tcpListener.Settings()
+		tcpSettings.GraphPrefix = cfg.Common.GraphPrefix
+		tcpSettings.Apply()
 
 		defer tcpListener.Stop()
 		if err = tcpListener.ListenTCP(tcpAddr); err != nil {
@@ -170,9 +171,10 @@ func main() {
 		}
 
 		pickleListener := receiver.NewPickle(core.In())
-		pickleListener.EditSettings(func(settings *receiver.Settings) {
-			settings.GraphPrefix = cfg.Common.GraphPrefix
-		})
+
+		pickleSettings := pickleListener.Settings()
+		pickleSettings.GraphPrefix = cfg.Common.GraphPrefix
+		pickleSettings.Apply()
 
 		defer pickleListener.Stop()
 		if err = pickleListener.ListenTCP(pickleAddr); err != nil {
