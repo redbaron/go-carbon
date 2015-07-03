@@ -97,6 +97,15 @@ func main() {
 		}()
 	}
 
+	app := carbon.New()
+	if err := app.Configure(cfg); err != nil {
+		logrus.Fatal(err)
+		return
+	}
+
+	logrus.Info("go-carbon started")
+	select {}
+
 	// carbon-cache prefix
 	if hostname, err := os.Hostname(); err == nil {
 		hostname = strings.Replace(hostname, ".", "_", -1)

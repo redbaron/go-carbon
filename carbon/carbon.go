@@ -1,6 +1,10 @@
 package carbon
 
 import (
+	"os"
+	"strings"
+	"sync"
+
 	"github.com/lomik/go-carbon/cache"
 	"github.com/lomik/go-carbon/persister"
 	"github.com/lomik/go-carbon/receiver"
@@ -8,6 +12,7 @@ import (
 
 // Carbon - main application controller
 type Carbon struct {
+	sync.RWMutex
 	Cache      *cache.Cache
 	Carbonlink *cache.CarbonlinkListener
 	UDP        *receiver.Receiver
@@ -30,6 +35,17 @@ func New() *Carbon {
 
 // Configure init or change carbon configuration
 func (app *Carbon) Configure(config *Config) error {
+	app.Lock()
+	defer app.Unlock()
+
+	// carbon-cache prefix
+	if hostname, err := os.Hostname(); err == nil {
+		hostname = strings.Replace(hostname, ".", "_", -1)
+		config.Common.GraphPrefix = strings.Replace(config.Common.GraphPrefix, "{host}", hostname, -1)
+	} else {
+		config.Common.GraphPrefix = strings.Replace(config.Common.GraphPrefix, "{host}", "localhost", -1)
+	}
+
 	cacheSettings := app.Cache.Settings()
 	udpSettings := app.UDP.Settings()
 	tcpSettings := app.TCP.Settings()

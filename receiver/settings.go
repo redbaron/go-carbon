@@ -49,17 +49,17 @@ func (s *Settings) Apply() error {
 	defer obj.Unlock()
 
 	if s.GraphPrefix != obj.GraphPrefix {
-		logrus.Infof("[%s] GraphPrefix changed: %#v -> %#v", obj.GraphPrefix, s.GraphPrefix)
+		logrus.Infof("[%s] GraphPrefix changed: %#v -> %#v", rcv.TypeString(), obj.GraphPrefix, s.GraphPrefix)
 		obj.GraphPrefix = s.GraphPrefix
 	}
 
 	if s.LogIncomplete != obj.LogIncomplete {
-		logrus.Infof("[%s] LogIncomplete changed: %#v -> %#v", obj.LogIncomplete, s.LogIncomplete)
+		logrus.Infof("[%s] LogIncomplete changed: %#v -> %#v", rcv.TypeString(), obj.LogIncomplete, s.LogIncomplete)
 		obj.LogIncomplete = s.LogIncomplete
 	}
 
 	if rcv.rcvType == typeUDP && s.LogIncomplete != obj.LogIncomplete {
-		logrus.Infof("[%s] LogIncomplete changed: %#v -> %#v", obj.LogIncomplete, s.LogIncomplete)
+		logrus.Infof("[%s] LogIncomplete changed: %#v -> %#v", rcv.TypeString(), obj.LogIncomplete, s.LogIncomplete)
 		obj.LogIncomplete = s.LogIncomplete
 	}
 
