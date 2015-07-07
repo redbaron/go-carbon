@@ -35,7 +35,7 @@ func (rcv *Receiver) handleTCP(conn net.Conn) {
 	defer conn.Close()
 	reader := bufio.NewReader(conn)
 
-	out, outChanged := rcv.out.Current()
+	out, outChanged := rcv.out.In()
 
 	for {
 		conn.SetReadDeadline(time.Now().Add(2 * time.Minute))
@@ -62,7 +62,7 @@ func (rcv *Receiver) handleTCP(conn net.Conn) {
 
 				select {
 				case <-outChanged:
-					out, outChanged = rcv.out.Current()
+					out, outChanged = rcv.out.In()
 				default:
 				}
 				out <- msg
@@ -81,7 +81,7 @@ func (rcv *Receiver) handlePickle(conn net.Conn) {
 	var msgLen uint32
 	var err error
 
-	out, outChanged := rcv.out.Current()
+	out, outChanged := rcv.out.In()
 
 	for {
 		conn.SetReadDeadline(time.Now().Add(2 * time.Minute))
@@ -121,7 +121,7 @@ func (rcv *Receiver) handlePickle(conn net.Conn) {
 
 			select {
 			case <-outChanged:
-				out, outChanged = rcv.out.Current()
+				out, outChanged = rcv.out.In()
 			default:
 			}
 			out <- msg

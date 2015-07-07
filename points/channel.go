@@ -37,7 +37,7 @@ func NewChannel(size int) *Channel {
 }
 
 // In returns pair of points channel and changed channel
-func (c *Channel) In() (chan *Points, chan bool) {
+func (c *Channel) In() (chan<- *Points, chan bool) {
 	c.RLock()
 	defer c.RUnlock()
 
@@ -45,7 +45,7 @@ func (c *Channel) In() (chan *Points, chan bool) {
 }
 
 // Out returns pair of points channel and changed channel
-func (c *Channel) Out() (chan *Points, chan bool) {
+func (c *Channel) Out() (<-chan *Points, chan bool) {
 	c.RLock()
 	defer c.RUnlock()
 
@@ -57,8 +57,8 @@ func (c *Channel) quarantine(in chan *Points) {
 
 	var p *Points
 	var opened bool
-	var sendTo chan *Points
-	var recvFrom chan *Points
+	var sendTo chan<- *Points
+	var recvFrom <-chan *Points
 
 	out, changeOut := c.In()
 
@@ -117,13 +117,13 @@ func (c *Channel) Len() int {
 }
 
 // InChan return current IN channel. With mutex lock
-func (c *Channel) InChan() chan *Points {
+func (c *Channel) InChan() chan<- *Points {
 	ch, _ := c.In()
 	return ch
 }
 
 // OutChan return current OUT channel. With mutex lock
-func (c *Channel) OutChan() chan *Points {
+func (c *Channel) OutChan() <-chan *Points {
 	ch, _ := c.Out()
 	return ch
 }

@@ -149,7 +149,7 @@ func (rcv *Receiver) ListenUDP(addr *net.UDPAddr) error {
 
 		lines := newIncompleteStorage()
 
-		out, outChanged := rcv.out.Current()
+		out, outChanged := rcv.out.In()
 
 		for {
 			rlen, peer, err := conn.ReadFromUDP(buf[:])
@@ -200,7 +200,7 @@ func (rcv *Receiver) ListenUDP(addr *net.UDPAddr) error {
 
 						select {
 						case <-outChanged:
-							out, outChanged = rcv.out.Current()
+							out, outChanged = rcv.out.In()
 						default:
 						}
 						out <- msg

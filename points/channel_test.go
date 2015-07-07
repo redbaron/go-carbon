@@ -13,7 +13,7 @@ func TestChannel(t *testing.T) {
 	c := NewChannel(10)
 	c.closeOldTimeout = 50 * time.Millisecond
 
-	out, _ := c.In()
+	out := c.in
 	go func() {
 		for i := 0; i < 100; i++ {
 			out <- NowPoint("test", float64(i))
@@ -22,7 +22,7 @@ func TestChannel(t *testing.T) {
 
 	var result []*Points
 
-	in, _ := c.Out()
+	in := c.out
 	assert.Equal(10, cap(in))
 
 	for j := 0; j < 50; j++ {
@@ -32,7 +32,7 @@ func TestChannel(t *testing.T) {
 
 	c.Resize(20)
 
-	in, _ = c.Out()
+	in = c.out
 	assert.Equal(20, cap(in))
 
 	for j := 0; j < 50; j++ {

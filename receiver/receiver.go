@@ -70,7 +70,7 @@ func (rcv *Receiver) TypeString() string {
 }
 
 // doCheckpoint sends internal statistics to cache
-func (rcv *Receiver) doCheckpoint(statChan chan *points.Points, graphPrefix string) {
+func (rcv *Receiver) doCheckpoint(statChan chan<- *points.Points, graphPrefix string) {
 	protocolPrefix := rcv.TypeString()
 
 	stat := func(metric string, value float64) {
@@ -113,7 +113,7 @@ func (rcv *Receiver) checkpointWorker() {
 
 	refreshSettings()
 
-	out, outChanged := rcv.out.Current()
+	out, outChanged := rcv.out.In()
 
 	for {
 		select {
@@ -126,7 +126,7 @@ func (rcv *Receiver) checkpointWorker() {
 
 		// changed output channel
 		case <-outChanged:
-			out, outChanged = rcv.out.Current()
+			out, outChanged = rcv.out.In()
 
 		case <-rcv.exit:
 			return
