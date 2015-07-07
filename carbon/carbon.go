@@ -50,7 +50,7 @@ func (app *Carbon) Configure(config *Config) error {
 	udpSettings := app.UDP.Settings()
 	tcpSettings := app.TCP.Settings()
 	pickleSettings := app.Pickle.Settings()
-	// persisterSettings := app.Persister.Settings()
+	persisterSettings := app.Persister.Settings()
 
 	// core settings
 	cacheSettings.GraphPrefix = config.Common.GraphPrefix

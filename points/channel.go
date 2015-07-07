@@ -8,26 +8,48 @@ import (
 // Channel is resizable *Point channel
 type Channel struct {
 	sync.RWMutex
-	active          chan *Points
-	changed         chan bool
+	in              chan *Points
+	inChanged       chan bool
+	out             chan *Points
+	outChanged      chan bool
 	closeOldTimeout time.Duration
+	exit            chan bool
+	exitThrottling  chan bool // close for stop throttling worker
+	size            int       // channel size
+	ratePerSec      int       // throttling
 }
 
 // NewChannel creates new channel
 func NewChannel(size int) *Channel {
+	ch := make(chan *Points, size)
+
 	return &Channel{
-		active:          make(chan *Points, size),
-		changed:         make(chan bool),
+		in:              ch,
+		out:             ch,
+		inChanged:       make(chan bool),
+		outChanged:      make(chan bool),
 		closeOldTimeout: time.Duration(5 * time.Minute),
+		exit:            make(chan bool),
+		exitThrottling:  make(chan bool),
+		size:            size,
+		ratePerSec:      0,
 	}
 }
 
-// Current returns pair of points channel and changed channel
-func (c *Channel) Current() (chan *Points, chan bool) {
+// In returns pair of points channel and changed channel
+func (c *Channel) In() (chan *Points, chan bool) {
 	c.RLock()
 	defer c.RUnlock()
 
-	return c.active, c.changed
+	return c.in, c.inChanged
+}
+
+// Out returns pair of points channel and changed channel
+func (c *Channel) Out() (chan *Points, chan bool) {
+	c.RLock()
+	defer c.RUnlock()
+
+	return c.out, c.outChanged
 }
 
 // read all messages from old channel and close it after timeout
@@ -38,7 +60,7 @@ func (c *Channel) quarantine(in chan *Points) {
 	var sendTo chan *Points
 	var recvFrom chan *Points
 
-	out, changeOut := c.Current()
+	out, changeOut := c.In()
 
 	// check timeout every minute
 	ticker := time.NewTicker(c.closeOldTimeout)
@@ -66,7 +88,7 @@ func (c *Channel) quarantine(in chan *Points) {
 			prevActivityCounter = activityCounter
 		// changed out channel
 		case <-changeOut:
-			out, changeOut = c.Current()
+			out, changeOut = c.In()
 		// send message to output
 		case sendTo <- p:
 			p = nil
@@ -82,84 +104,109 @@ func (c *Channel) quarantine(in chan *Points) {
 	}
 }
 
-func (c *Channel) changeChannel(newChannel chan *Points) {
-	c.Lock()
-
-	oldChannel := c.active
-	oldChanged := c.changed
-
-	c.active = newChannel
-	c.changed = make(chan bool)
-
-	c.Unlock()
-
-	close(oldChanged)
-	go c.quarantine(oldChannel)
-}
-
-// Resize channel
-func (c *Channel) Resize(newSize int) {
-	newChannel := make(chan *Points, newSize)
-	c.changeChannel(newChannel)
-}
-
 // Size returns current size of channel
 func (c *Channel) Size() int {
-	ch, _ := c.Current()
+	ch, _ := c.In()
 	return cap(ch)
 }
 
 // Len return current "len" of active channel
 func (c *Channel) Len() int {
-	ch, _ := c.Current()
+	ch, _ := c.In()
 	return len(ch)
 }
 
-// Chan return current channel. Uses mutex.Lock - for tests only
-func (c *Channel) Chan() chan *Points {
-	ch, _ := c.Current()
+// InChan return current IN channel. With mutex lock
+func (c *Channel) InChan() chan *Points {
+	ch, _ := c.In()
 	return ch
 }
 
-// ThrottledOut returns new throttled channel
-func (c *Channel) ThrottledOut(ratePerSec int) *Channel {
-	in, inChanged := c.Current()
+// OutChan return current OUT channel. With mutex lock
+func (c *Channel) OutChan() chan *Points {
+	ch, _ := c.Out()
+	return ch
+}
 
-	outChannel := NewChannel(cap(in))
+func (c *Channel) changeChannel(newIn chan *Points, newOut chan *Points) {
+	oldIn := c.in
+	oldInChanged := c.inChanged
+	oldOut := c.out
+	oldOutChanged := c.outChanged
 
-	out, outChanged := outChannel.Current()
+	c.in = newIn
+	c.inChanged = make(chan bool)
+	c.out = newOut
+	c.outChanged = make(chan bool)
 
-	step := time.Duration(1e9/ratePerSec) * time.Nanosecond
+	close(oldInChanged)
+	close(oldOutChanged)
 
-	go func() {
-		var p *Points
-		var opened bool
+	go c.quarantine(oldIn)
+	if oldIn != oldOut {
+		go c.quarantine(oldOut)
+	}
+}
 
-		defer close(out)
+// apply settings
+func (c *Channel) apply() {
+	newIn := make(chan *Points, c.size)
+	newOut := newIn
+	if c.ratePerSec != 0 {
+		newOut = make(chan *Points, c.size)
+	}
 
-		// start flight
-		throttleTicker := time.NewTicker(step)
-		defer throttleTicker.Stop()
+	exitThrottling := c.exitThrottling
+	c.exitThrottling = make(chan bool)
+	close(exitThrottling)
 
-		for {
-			select {
-			// change input
-			case <-inChanged:
-				in, inChanged = c.Current()
-				outChannel.Resize(cap(in))
-			// change output
-			case <-outChanged:
-				out, outChanged = outChannel.Current()
-			// receive
-			case <-throttleTicker.C:
-				if p, opened = <-in; !opened {
-					return
-				}
-				out <- p
+	c.changeChannel(newIn, newOut)
+
+	if c.ratePerSec != 0 {
+		go throttleWorker(c.ratePerSec, newIn, newOut, c.exitThrottling)
+	}
+}
+
+func throttleWorker(rps int, in chan *Points, out chan *Points, exit chan bool) {
+	step := time.Duration(1e9/rps) * time.Nanosecond
+
+	var p *Points
+	var opened bool
+
+	// start flight
+	throttleTicker := time.NewTicker(step)
+	defer throttleTicker.Stop()
+
+	for {
+		select {
+		// exit
+		case <-exit:
+			return
+		// receive
+		case <-throttleTicker.C:
+			if p, opened = <-in; !opened {
+				return
 			}
+			out <- p
 		}
-	}()
+	}
+}
 
-	return outChannel
+// Resize channel
+func (c *Channel) Resize(newSize int) {
+	c.Lock()
+	defer c.Unlock()
 
+	c.size = newSize
+
+	c.apply()
+}
+
+// Throttle enable or disable throttling
+func (c *Channel) Throttle(ratePerSec int) {
+	c.Lock()
+	defer c.Unlock()
+
+	c.ratePerSec = ratePerSec
+	c.apply()
 }

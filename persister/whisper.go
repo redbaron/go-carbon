@@ -10,106 +10,50 @@ import (
 	"time"
 
 	"github.com/Sirupsen/logrus"
-	"github.com/benbjohnson/clock"
 	"github.com/lomik/go-whisper"
 
 	"github.com/lomik/go-carbon/points"
 )
 
-// CreateOpener whisper opener interface for mock in tests
-type CreateOpener interface {
-	Create(string, whisper.Retentions, whisper.AggregationMethod, float32) (*whisper.Whisper, error)
-	Open(string) (*whisper.Whisper, error)
-}
-
-// Persister is a struct to hold dependencies via interface
-type Persister struct {
-	Clock   clock.Clock
-	Whisper CreateOpener
-}
-
-var app = Persister{
-	Clock:   clock.New(),
-	Whisper: WhisperFactory{},
-}
-
 // Whisper write data to *.wsp files
 type Whisper struct {
-	updateOperations    uint32
-	commitedPoints      uint32
-	in                  *points.Channel
-	exit                chan bool
-	schemas             *WhisperSchemas
-	aggregation         *WhisperAggregation
-	workersCount        int
-	rootPath            string
-	graphPrefix         string
-	created             uint32 // counter
-	maxUpdatesPerSecond int
+	settings         *Settings
+	in               *points.Channel
+	exit             chan bool
+	updateOperations uint32
+	commitedPoints   uint32
+	created          uint32 // counter
 }
 
 // NewWhisper create instance of Whisper
-func NewWhisper(rootPath string, schemas *WhisperSchemas, aggregation *WhisperAggregation, in *points.Channel) *Whisper {
-	return &Whisper{
-		in:                  in,
-		exit:                make(chan bool),
-		schemas:             schemas,
-		aggregation:         aggregation,
-		workersCount:        1,
-		rootPath:            rootPath,
-		maxUpdatesPerSecond: 0,
+func NewWhisper(in *points.Channel) *Whisper {
+	settings := &Settings{
+		changed:     make(chan bool),
+		Enabled:     false,
+		GraphPrefix: "carbon.",
+		Workers:     1,
 	}
+	p := &Whisper{
+		settings: settings,
+		in:       in,
+		exit:     make(chan bool),
+	}
+	settings.persister = p
+	return p
 }
 
-// WhisperFactory - holder for factory functions
-type WhisperFactory struct{}
+func (p *Whisper) store(values *points.Points, rootPath string, schemas *WhisperSchemas, aggregation *WhisperAggregation) {
+	path := filepath.Join(rootPath, strings.Replace(values.Metric, ".", "/", -1)+".wsp")
 
-// Create creates a new underlying whisperdb file
-func (WhisperFactory) Create(path string, retentions whisper.Retentions, aggregationMethod whisper.AggregationMethod, xFilesFactor float32) (*whisper.Whisper, error) {
-	return whisper.Create(path, retentions, aggregationMethod, xFilesFactor)
-}
-
-// Open opens an existing underlying whisperdb file
-func (WhisperFactory) Open(path string) (*whisper.Whisper, error) {
-	return whisper.Open(path)
-}
-
-// SetGraphPrefix for internal cache metrics
-func (p *Whisper) SetGraphPrefix(prefix string) {
-	p.graphPrefix = prefix
-}
-
-// SetMaxUpdatesPerSecond enable throttling
-func (p *Whisper) SetMaxUpdatesPerSecond(maxUpdatesPerSecond int) {
-	p.maxUpdatesPerSecond = maxUpdatesPerSecond
-}
-
-// SetWorkers count
-func (p *Whisper) SetWorkers(count int) {
-	p.workersCount = count
-}
-
-// Stat sends internal statistics to cache
-func (p *Whisper) Stat(metric string, value float64) {
-	p.in.Chan() <- points.OnePoint(
-		fmt.Sprintf("%spersister.%s", p.graphPrefix, metric),
-		value,
-		app.Clock.Now().Unix(),
-	)
-}
-
-func (p *Whisper) store(values *points.Points) {
-	path := filepath.Join(p.rootPath, strings.Replace(values.Metric, ".", "/", -1)+".wsp")
-
-	w, err := app.Whisper.Open(path)
+	w, err := whisper.Open(path)
 	if err != nil {
-		schema := p.schemas.match(values.Metric)
+		schema := schemas.match(values.Metric)
 		if schema == nil {
 			logrus.Errorf("[persister] No storage schema defined for %s", values.Metric)
 			return
 		}
 
-		aggr := p.aggregation.match(values.Metric)
+		aggr := aggregation.match(values.Metric)
 		if aggr == nil {
 			logrus.Errorf("[persister] No storage aggregation defined for %s", values.Metric)
 			return
@@ -128,7 +72,7 @@ func (p *Whisper) store(values *points.Points) {
 			return
 		}
 
-		w, err = app.Whisper.Create(path, schema.retentions, aggr.aggregationMethod, float32(aggr.xFilesFactor))
+		w, err = whisper.Create(path, schema.retentions, aggr.aggregationMethod, float32(aggr.xFilesFactor))
 		if err != nil {
 			logrus.Errorf("[persister] Failed to create new whisper file %s: %s", path, err.Error())
 			return
@@ -158,14 +102,35 @@ func (p *Whisper) store(values *points.Points) {
 func (p *Whisper) worker(inChannel *points.Channel) {
 	in, inChanged := inChannel.Current()
 
+	var rootPath string
+	var schemas *WhisperSchemas
+	var aggregation *WhisperAggregation
+	var settingsChanged chan bool
+
+	refreshSettings := func() {
+		p.settings.RLock()
+		defer p.settings.RUnlock()
+
+		rootPath = p.settings.RootPath
+		schemas = p.settings.schemas
+		aggregation = p.settings.aggregation
+	}
+
+	refreshSettings()
+
 	for {
 		select {
+		// @TODO: close in shuffler or loose cache
 		case <-p.exit:
 			break
+		// input channel resized
 		case <-inChanged:
 			in, inChanged = inChannel.Current()
+		// settings updated
+		case <-settingsChanged:
+			refreshSettings()
 		case values := <-in:
-			p.store(values)
+			p.store(values, rootPath, schemas, aggregation)
 		}
 	}
 }
@@ -197,13 +162,27 @@ func (p *Whisper) shuffler(inChannel *points.Channel, out []*points.Channel) {
 
 // save stat
 func (p *Whisper) doCheckpoint() {
-	updateOperations := atomic.LoadUint32(&p.updateOperations)
-	commitedPoints := atomic.LoadUint32(&p.commitedPoints)
-	atomic.AddUint32(&p.updateOperations, -updateOperations)
-	atomic.AddUint32(&p.commitedPoints, -commitedPoints)
 
-	created := atomic.LoadUint32(&p.created)
-	atomic.AddUint32(&p.created, -created)
+	p.settings.RLock()
+	graphPrefix := p.settings.GraphPrefix
+	p.settings.RUnlock()
+
+	statChan := p.in.Chan()
+
+	// Stat sends internal statistics to cache
+	stat := func(metric string, value float64) {
+		statChan <- points.NowPoint(fmt.Sprintf("%spersister.%s", graphPrefix, metric), value)
+	}
+
+	load := func(addr *uint32) uint32 {
+		value := atomic.LoadUint32(addr)
+		atomic.AddUint32(addr, -value)
+		return value
+	}
+
+	updateOperations := load(&p.updateOperations)
+	commitedPoints := load(&p.commitedPoints)
+	created := load(&p.created)
 
 	logrus.WithFields(logrus.Fields{
 		"updateOperations": float64(updateOperations),
@@ -211,21 +190,20 @@ func (p *Whisper) doCheckpoint() {
 		"created":          created,
 	}).Info("[persister] doCheckpoint()")
 
-	p.Stat("updateOperations", float64(updateOperations))
-	p.Stat("commitedPoints", float64(commitedPoints))
+	stat("updateOperations", float64(updateOperations))
+	stat("commitedPoints", float64(commitedPoints))
 	if updateOperations > 0 {
-		p.Stat("pointsPerUpdate", float64(commitedPoints)/float64(updateOperations))
+		stat("pointsPerUpdate", float64(commitedPoints)/float64(updateOperations))
 	} else {
-		p.Stat("pointsPerUpdate", 0.0)
+		stat("pointsPerUpdate", 0.0)
 	}
 
-	p.Stat("created", float64(created))
-
+	stat("created", float64(created))
 }
 
 // stat timer
 func (p *Whisper) statWorker() {
-	ticker := app.Clock.Ticker(time.Minute)
+	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
 
 	for {

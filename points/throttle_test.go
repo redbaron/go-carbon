@@ -11,14 +11,15 @@ func TestThrottleChan(t *testing.T) {
 	perSecond := 100
 	timestamp := time.Now().Unix()
 
-	chIn := NewChannel(0)
-	chOut := chIn.ThrottledOut(perSecond)
+	ch := NewChannel(0)
+	ch.Throttle(perSecond)
+
 	wait := time.After(time.Second)
 
 	bw := 0
 
-	in, _ := chIn.Current()
-	out, _ := chOut.Current()
+	in, _ := ch.In()
+	out, _ := ch.Out()
 
 loop:
 	for {

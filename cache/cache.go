@@ -126,8 +126,8 @@ func (c *Cache) worker() {
 	var settingsChanged chan bool
 
 	refreshSettings := func() {
-		c.RLock()
-		defer c.RUnlock()
+		c.settings.RLock()
+		defer c.settings.RUnlock()
 
 		settingsChanged = c.settings.changed
 		maxSize = c.settings.MaxSize
