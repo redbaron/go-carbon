@@ -50,7 +50,7 @@ func TestCacheCheckpoint(t *testing.T) {
 		metricName := fmt.Sprintf("metric%d", index)
 
 		for i := value; i > 0; i-- {
-			cache.In().Chan() <- points.OnePoint(metricName, float64(i), startTime+int64(i))
+			cache.In().InChan() <- points.OnePoint(metricName, float64(i), startTime+int64(i))
 		}
 
 	}
@@ -59,7 +59,7 @@ func TestCacheCheckpoint(t *testing.T) {
 	// @todo: test log
 	cache.doCheckpoint()
 
-	d := <-cache.Out().Chan()
+	d := <-cache.Out().OutChan()
 	assert.Equal("metric0", d.Metric)
 
 	systemMetrics := []string{
@@ -73,7 +73,7 @@ func TestCacheCheckpoint(t *testing.T) {
 	}
 
 	for _, metricName := range systemMetrics {
-		d = <-cache.Out().Chan()
+		d = <-cache.Out().OutChan()
 		assert.Equal(metricName, d.Metric)
 	}
 
@@ -81,7 +81,7 @@ func TestCacheCheckpoint(t *testing.T) {
 	sort.Sort(sort.Reverse(sort.IntSlice(result)))
 
 	for _, size := range result {
-		d = <-cache.Out().Chan()
+		d = <-cache.Out().OutChan()
 		assert.Equal(size, len(d.Data))
 	}
 }

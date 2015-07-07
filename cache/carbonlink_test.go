@@ -61,9 +61,9 @@ func TestCarbonlink(t *testing.T) {
 		1422795966,
 	)
 
-	cache.In().Chan() <- msg1
-	cache.In().Chan() <- msg2
-	cache.In().Chan() <- msg3
+	cache.In().InChan() <- msg1
+	cache.In().InChan() <- msg2
+	cache.In().InChan() <- msg3
 
 	defer cache.Stop()
 
@@ -120,7 +120,7 @@ func TestCarbonlink(t *testing.T) {
 	/* Remove carbon.agents.carbon_agent_server.param.size from cache and request again */
 
 	for {
-		c := <-cache.Out().Chan()
+		c := <-cache.Out().OutChan()
 		if c.Metric == "carbon.agents.carbon_agent_server.param.size" {
 			break
 		}

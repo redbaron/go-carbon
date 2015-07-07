@@ -117,7 +117,7 @@ func (c *Cache) doCheckpoint() {
 
 func (c *Cache) worker() {
 	var values *points.Points
-	var sendTo chan *points.Points
+	var sendTo chan<- *points.Points
 
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
@@ -136,8 +136,8 @@ func (c *Cache) worker() {
 	refreshSettings()
 
 	// Call Out() and In() for create channels if nil
-	out, outChanged := c.Out().Current()
-	in, inChanged := c.In().Current()
+	out, outChanged := c.Out().In()
+	in, inChanged := c.In().Out()
 
 	for {
 		if values == nil {
@@ -157,11 +157,11 @@ func (c *Cache) worker() {
 
 		// changed input channel
 		case <-inChanged:
-			in, inChanged = c.inputChan.Current()
+			in, inChanged = c.inputChan.Out()
 
 		// changed output channel
 		case <-outChanged:
-			out, outChanged = c.outputChan.Current()
+			out, outChanged = c.outputChan.In()
 
 		// carbonlink
 		case query := <-c.queryChan:

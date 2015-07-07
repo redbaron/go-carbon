@@ -47,7 +47,7 @@ func TestCacheSettings(t *testing.T) {
 				setting.(*Settings).InputCapacity = value.(int)
 			},
 			func(cache interface{}, value interface{}) {
-				assert.Equal(value.(int), cap(cache.(*Cache).In().Chan()))
+				assert.Equal(value.(int), cache.(*Cache).In().Size())
 			},
 		},
 		SettingsTestCase{
@@ -58,7 +58,7 @@ func TestCacheSettings(t *testing.T) {
 				setting.(*Settings).OutputCapacity = value.(int)
 			},
 			func(cache interface{}, value interface{}) {
-				assert.Equal(value.(int), cap(cache.(*Cache).Out().Chan()))
+				assert.Equal(value.(int), cache.(*Cache).Out().Size())
 			},
 		},
 	}
