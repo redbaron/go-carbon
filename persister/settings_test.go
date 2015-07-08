@@ -22,6 +22,20 @@ pattern = ^carbon\.
 retentions = 60v:90d
 `
 
+var AggregationOK = `
+[carbon]
+pattern = ^carbon\.
+xFilesFactor = 0.1
+aggregationMethod = min
+`
+
+var AggregationFail = `
+[carbon]
+pattern = ^carb(on\.
+xFilesFactor = 0.1
+aggregationMethod = min
+`
+
 func TestLoadAndValidate(t *testing.T) {
 	assert := assert.New(t)
 
@@ -30,71 +44,81 @@ func TestLoadAndValidate(t *testing.T) {
 	}
 
 	schemas := []string{
-		"schemas file empty",
-		"schemas file not exists",
-		"schemas broken",
-		"schemas ok",
+		"file empty",
+		"file not exists",
+		"fail",
+		"ok",
 	}
 
 	aggr := []string{
-		"aggregation file empty",
-		"aggregation file not exists",
-		"aggregation broken",
-		"aggregation ok",
+		"file empty",
+		"file not exists",
+		"fail",
+		"ok",
 	}
 
-	for _, ss := range schemas {
-		for _, aa := range aggr {
-			helper.Root(t, func(root string) {
-				s := NewSettings()
+	for _, enabled := range []bool{false, true} {
+		for _, ss := range schemas {
+			for _, aa := range aggr {
+				helper.Root(t, func(root string) {
+					s := NewSettings()
+					s.Enabled = enabled
 
-				hasFail := false
+					hasFail := false
 
-				switch ss {
+					switch ss {
 
-				case "schemas file empty":
-					s.SchemasFile = ""
-					hasFail = true
+					case "file empty":
+						s.SchemasFile = ""
+						hasFail = true
 
-				case "schemas file not exists":
-					s.SchemasFile = filepath.Join(root, "schemas.conf")
-					hasFail = true
+					case "file not exists":
+						s.SchemasFile = filepath.Join(root, "schemas.conf")
+						hasFail = true
 
-				case "schemas broken":
-					s.SchemasFile = filepath.Join(root, "schemas.conf")
-					writeFile(s.SchemasFile, SchemasFail)
-					hasFail = true
+					case "fail":
+						s.SchemasFile = filepath.Join(root, "schemas.conf")
+						writeFile(s.SchemasFile, SchemasFail)
+						hasFail = true
 
-				case "schemas ok":
-					s.SchemasFile = filepath.Join(root, "schemas.conf")
-					writeFile(s.SchemasFile, SchemasOK)
-				}
+					case "ok":
+						s.SchemasFile = filepath.Join(root, "schemas.conf")
+						writeFile(s.SchemasFile, SchemasOK)
+					}
 
-				switch aa {
+					switch aa {
 
-				case "aggregation file empty":
-					s.AggregationFile = ""
+					case "file empty":
+						s.AggregationFile = ""
 
-				case "aggregation file not exists":
-					s.AggregationFile = filepath.Join(root, "aggregation.conf")
-					hasFail = true
+					case "file not exists":
+						s.AggregationFile = filepath.Join(root, "aggregation.conf")
+						hasFail = true
 
-				case "aggregation broken":
-					s.AggregationFile = filepath.Join(root, "aggregation.conf")
-					writeFile(s.AggregationFile, SchemasFail)
-					hasFail = true
+					case "fail":
+						s.AggregationFile = filepath.Join(root, "aggregation.conf")
+						writeFile(s.AggregationFile, AggregationFail)
+						hasFail = true
 
-				case "aggregation ok":
-					s.AggregationFile = filepath.Join(root, "aggregation.conf")
-					writeFile(s.AggregationFile, SchemasOK)
-				}
+					case "ok":
+						s.AggregationFile = filepath.Join(root, "aggregation.conf")
+						writeFile(s.AggregationFile, AggregationOK)
+					}
 
-				if hasFail {
-					assert.Error(s.LoadAndValidate(), fmt.Sprintf("%s; %s", ss, aa))
-				} else {
-					assert.NoError(s.LoadAndValidate(), fmt.Sprintf("%s; %s", ss, aa))
-				}
-			})
+					msg := fmt.Sprintf("Enabled: %#v, Schemas: %s, Aggregation %s", enabled, ss, aa)
+
+					if enabled && hasFail {
+						assert.Error(s.LoadAndValidate(), msg)
+					} else {
+						assert.NoError(s.LoadAndValidate(), msg)
+					}
+
+					if enabled && !hasFail {
+						assert.NotNil(s.schemas, msg)
+						assert.NotNil(s.aggregation, msg)
+					}
+				})
+			}
 		}
 	}
 }

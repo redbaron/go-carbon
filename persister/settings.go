@@ -1,5 +1,7 @@
 package persister
 
+import "fmt"
+
 // Settings of whisper persister
 type Settings struct {
 	Enabled             bool   // can be disabled
@@ -35,6 +37,30 @@ func (p *Whisper) Settings() *Settings {
 
 // LoadAndValidate loads schemas and aggregation from files. Validate settings
 func (s *Settings) LoadAndValidate() error {
+	var err error
+
+	if !s.Enabled { // if disabled no validate other settings
+		return nil
+	}
+
+	if s.SchemasFile == "" {
+		return fmt.Errorf("schemas file is empty")
+	}
+
+	s.schemas, err = ReadWhisperSchemas(s.SchemasFile)
+	if err != nil {
+		return err
+	}
+
+	if s.AggregationFile != "" {
+		s.aggregation, err = ReadWhisperAggregation(s.AggregationFile)
+		if err != nil {
+			return err
+		}
+	} else {
+		s.aggregation = NewWhisperAggregation()
+	}
+
 	return nil
 }
 
