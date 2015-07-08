@@ -19,30 +19,25 @@ import (
 type Whisper struct {
 	settings         *Settings
 	in               *points.Channel
-	exit             chan bool
+	exit             *Exit
 	updateOperations uint32
 	commitedPoints   uint32
 	created          uint32 // counter
 }
 
 // NewWhisper create instance of Whisper
-func NewWhisper(in *points.Channel) *Whisper {
-	settings := &Settings{
-		changed:     make(chan bool),
-		Enabled:     false,
-		GraphPrefix: "carbon.",
-		Workers:     1,
-	}
-	p := &Whisper{
+func NewWhisper(in *points.Channel, settings *Settings) *Whisper {
+	return &Whisper{
 		settings: settings,
 		in:       in,
-		exit:     make(chan bool),
 	}
-	settings.persister = p
-	return p
 }
 
-func (p *Whisper) store(values *points.Points, rootPath string, schemas *WhisperSchemas, aggregation *WhisperAggregation) {
+func (p *Whisper) store(values *points.Points) {
+	rootPath := p.settings.RootPath
+	schemas := p.settings.schemas
+	aggregation := p.settings.aggregation
+
 	path := filepath.Join(rootPath, strings.Replace(values.Metric, ".", "/", -1)+".wsp")
 
 	w, err := whisper.Open(path)
@@ -99,75 +94,80 @@ func (p *Whisper) store(values *points.Points, rootPath string, schemas *Whisper
 	w.UpdateMany(points)
 }
 
-func (p *Whisper) worker(inChannel *points.Channel) {
-	in, inChanged := inChannel.Current()
-
-	var rootPath string
-	var schemas *WhisperSchemas
-	var aggregation *WhisperAggregation
-	var settingsChanged chan bool
-
-	refreshSettings := func() {
-		p.settings.RLock()
-		defer p.settings.RUnlock()
-
-		rootPath = p.settings.RootPath
-		schemas = p.settings.schemas
-		aggregation = p.settings.aggregation
-	}
-
-	refreshSettings()
+func (p *Whisper) worker(inChannel *points.Channel, exit *Exit) {
+	in, inChanged := inChannel.Out()
 
 	for {
 		select {
-		// @TODO: close in shuffler or loose cache
-		case <-p.exit:
+		// confirm exit and exit
+		case <-exit.C:
+			exit.Done()
 			break
 		// input channel resized
 		case <-inChanged:
-			in, inChanged = inChannel.Current()
-		// settings updated
-		case <-settingsChanged:
-			refreshSettings()
+			in, inChanged = inChannel.Out()
+		// store values
 		case values := <-in:
-			p.store(values, rootPath, schemas, aggregation)
+			p.store(values)
 		}
 	}
 }
 
-func (p *Whisper) shuffler(inChannel *points.Channel, out []*points.Channel) {
-	workers := uint32(len(out))
+func (p *Whisper) shuffler(inChannel *points.Channel, exit *Exit) {
+	workersExit := NewExit(p.settings.Workers)
 
-	var outChannels [](chan *points.Points)
+	var sendChannels [](chan<- *points.Points)
+	var channels [](*points.Channel)
 
-	for _, c := range out {
-		ch, _ := c.Current() // channels between shuffler and persister unchangeable
-		outChannels = append(outChannels, ch)
+	for i := 0; i < p.settings.Workers; i++ {
+		ch := points.NewChannel(32)
+		channels = append(channels, ch)
+		sendChannels = append(sendChannels, ch.InChan())
+		go p.worker(ch, workersExit)
 	}
 
-	in, inChanged := inChannel.Current()
+	quarantine := func() { // receive all from channels
+		out, outChanged := inChannel.In()
+		for _, pointsChannel := range channels {
+			ch := pointsChannel.OutChan()
+			for {
+				select {
+				case <-outChanged:
+					out, outChanged = inChannel.In()
+				case p := <-ch:
+					out <- p
+				// all from ch readed
+				default:
+					close(pointsChannel.InChan())
+					break
+				}
+			}
+		}
+	}
+
+	workers := uint32(p.settings.Workers)
+	in, inChanged := inChannel.Out()
 
 	for {
 		select {
-		case <-p.exit:
-			break
 		case <-inChanged:
-			in, inChanged = inChannel.Current()
+			in, inChanged = inChannel.Out()
 		case values := <-in:
 			index := crc32.ChecksumIEEE([]byte(values.Metric)) % workers
-			outChannels[index] <- values
+			sendChannels[index] <- values
+		case <-exit.C:
+			workersExit.Exit() // wait for all workers stopped
+			exit.Done()
+			go quarantine()
 		}
 	}
 }
 
 // save stat
 func (p *Whisper) doCheckpoint() {
-
-	p.settings.RLock()
 	graphPrefix := p.settings.GraphPrefix
-	p.settings.RUnlock()
 
-	statChan := p.in.Chan()
+	statChan := p.in.InChan()
 
 	// Stat sends internal statistics to cache
 	stat := func(metric string, value float64) {
@@ -202,13 +202,13 @@ func (p *Whisper) doCheckpoint() {
 }
 
 // stat timer
-func (p *Whisper) statWorker() {
+func (p *Whisper) statWorker(exit chan bool) {
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
 
 	for {
 		select {
-		case <-p.exit:
+		case <-exit:
 			break
 		case <-ticker.C:
 			go p.doCheckpoint()
@@ -218,29 +218,23 @@ func (p *Whisper) statWorker() {
 
 // Start worker
 func (p *Whisper) Start() {
-	go p.statWorker()
+	exit := NewExit(1)
+
+	p.exit = exit
+
+	go p.statWorker(exit.C)
 
 	inChan := p.in
-	if p.maxUpdatesPerSecond > 0 {
-		inChan = inChan.ThrottledOut(p.maxUpdatesPerSecond)
-	}
+	inChan.Throttle(p.settings.MaxUpdatesPerSecond)
 
-	if p.workersCount <= 1 { // solo worker
-		go p.worker(inChan)
+	if p.settings.Workers <= 1 { // solo worker
+		go p.worker(inChan, exit)
 	} else {
-		var channels [](*points.Channel)
-
-		for i := 0; i < p.workersCount; i++ {
-			ch := points.NewChannel(32)
-			channels = append(channels, ch)
-			go p.worker(ch)
-		}
-
-		go p.shuffler(inChan, channels)
+		go p.shuffler(inChan, exit)
 	}
 }
 
 // Stop worker
 func (p *Whisper) Stop() {
-	close(p.exit)
+	p.exit.Exit()
 }
