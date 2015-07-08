@@ -24,6 +24,7 @@ type Carbon struct {
 // New returns new instance of Carbon
 func New() *Carbon {
 	core := cache.New()
+
 	return &Carbon{
 		Cache:      core,
 		Carbonlink: cache.NewCarbonlinkListener(core.Query()),
@@ -50,7 +51,7 @@ func (app *Carbon) Configure(config *Config) error {
 	udpSettings := app.UDP.Settings()
 	tcpSettings := app.TCP.Settings()
 	pickleSettings := app.Pickle.Settings()
-	persisterSettings := app.Persister.Settings()
+	persisterSettings := persister.NewSettings()
 
 	// core settings
 	cacheSettings.GraphPrefix = config.Common.GraphPrefix
@@ -71,6 +72,15 @@ func (app *Carbon) Configure(config *Config) error {
 	pickleSettings.Enabled = config.Pickle.Enabled
 	pickleSettings.ListenAddr = config.Pickle.Listen
 
+	// persister
+	persisterSettings.Enabled = config.Whisper.Enabled
+	persisterSettings.GraphPrefix = config.Common.GraphPrefix
+	persisterSettings.RootPath = config.Whisper.DataDir
+	persisterSettings.Workers = config.Whisper.Workers
+	persisterSettings.MaxUpdatesPerSecond = config.Whisper.MaxUpdatesPerSecond
+	persisterSettings.SchemasFile = config.Whisper.Schemas
+	persisterSettings.AggregationFile = config.Whisper.Aggregation
+
 	var err error
 	var tmpErr error
 
@@ -87,6 +97,9 @@ func (app *Carbon) Configure(config *Config) error {
 	if err = pickleSettings.Validate(); err != nil {
 		return err
 	}
+	if err = persisterSettings.LoadAndValidate(); err != nil {
+		return err
+	}
 
 	// apply all. Fail after all applied (if can)
 	if tmpErr = cacheSettings.Apply(); tmpErr != nil {
@@ -100,6 +113,15 @@ func (app *Carbon) Configure(config *Config) error {
 	}
 	if tmpErr = pickleSettings.Apply(); tmpErr != nil {
 		err = tmpErr
+	}
+
+	// if persister settings changed RESTART THEM
+	if app.Persister == nil || app.Persister.Settings().IsChanged(persisterSettings) {
+		if app.Persister != nil {
+			app.Persister.Stop()
+		}
+		app.Persister = persister.NewWhisper(app.Cache.Out(), persisterSettings)
+		app.Persister.Start()
 	}
 
 	return err

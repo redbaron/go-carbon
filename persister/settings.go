@@ -33,7 +33,12 @@ func (p *Whisper) Settings() *Settings {
 	return p.settings.Copy()
 }
 
-// Validate ...
-func (s *Settings) Validate() error {
+// LoadAndValidate loads schemas and aggregation from files. Validate settings
+func (s *Settings) LoadAndValidate() error {
 	return nil
+}
+
+// IsChanged returns true if settings differ
+func (s *Settings) IsChanged(other *Settings) bool {
+	return false
 }
