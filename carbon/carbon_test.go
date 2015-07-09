@@ -20,10 +20,10 @@ func NewTestConfig(rootDir string) *Config {
 	return cfg
 }
 
-func NewTestCarbon(config *Config) (error, *Carbon) {
+func NewTestCarbon(config *Config) (*Carbon, error) {
 	carbon := New()
 	err := carbon.Configure(config, true)
-	return err, carbon
+	return carbon, err
 }
 
 var SchemasOK = `
@@ -42,7 +42,7 @@ func TestCarbon(t *testing.T) {
 
 		config := NewTestConfig(rootDir)
 		writeSchemas(config, SchemasOK)
-		err, app := NewTestCarbon(config)
+		app, err := NewTestCarbon(config)
 
 		assert.NoError(err)
 		assert.NotNil(app)

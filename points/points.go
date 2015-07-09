@@ -55,6 +55,15 @@ func (p *Points) Copy() *Points {
 	}
 }
 
+// String ...
+func (p *Points) String() string {
+	result := ""
+	for _, point := range p.Data {
+		result = fmt.Sprintf("%s%s %f %d\n", result, p.Metric, point.Value, point.Timestamp)
+	}
+	return result
+}
+
 // ParseText parse text protocol Point
 //  host.Point.value 42 1422641531\n
 func ParseText(line string) (*Points, error) {
