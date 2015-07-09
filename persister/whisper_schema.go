@@ -24,6 +24,14 @@ type whisperSchemaItem struct {
 	priority     int64
 }
 
+// Eq checks two items is equal
+func (s *whisperSchemaItem) Eq(other *whisperSchemaItem) bool {
+	return s.name == other.name &&
+		s.pattern.String() == other.pattern.String() &&
+		s.retentionStr == other.retentionStr &&
+		s.priority == other.priority
+}
+
 type whisperSchemaItemByPriority []*whisperSchemaItem
 
 func (v whisperSchemaItemByPriority) Len() int           { return len(v) }

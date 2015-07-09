@@ -22,6 +22,15 @@ type whisperAggregationItem struct {
 	aggregationMethod    whisper.AggregationMethod
 }
 
+// Eq checks two items is equal
+func (a *whisperAggregationItem) Eq(other *whisperAggregationItem) bool {
+	return a.name == other.name &&
+		a.pattern.String() == other.pattern.String() &&
+		a.xFilesFactor == other.xFilesFactor &&
+		a.aggregationMethodStr == other.aggregationMethodStr &&
+		a.aggregationMethod == other.aggregationMethod
+}
+
 // WhisperAggregation ...
 type WhisperAggregation struct {
 	Data    []*whisperAggregationItem

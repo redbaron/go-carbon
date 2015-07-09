@@ -66,5 +66,37 @@ func (s *Settings) LoadAndValidate() error {
 
 // IsChanged returns true if settings differ
 func (s *Settings) IsChanged(other *Settings) bool {
+
+	if s.Enabled != other.Enabled ||
+		s.GraphPrefix != other.GraphPrefix ||
+		s.RootPath != other.RootPath ||
+		s.Workers != other.Workers ||
+		s.MaxUpdatesPerSecond != other.MaxUpdatesPerSecond ||
+		s.SchemasFile != other.SchemasFile ||
+		s.AggregationFile != other.AggregationFile {
+		return true
+	}
+
+	if len(s.schemas.Data) != len(other.schemas.Data) ||
+		len(s.aggregation.Data) != len(other.aggregation.Data) {
+		return true
+	}
+
+	if !s.aggregation.Default.Eq(other.aggregation.Default) {
+		return true
+	}
+
+	for i := 0; i < len(s.schemas.Data); i++ {
+		if !s.schemas.Data[i].Eq(other.schemas.Data[i]) {
+			return true
+		}
+	}
+
+	for i := 0; i < len(s.aggregation.Data); i++ {
+		if !s.aggregation.Data[i].Eq(other.aggregation.Data[i]) {
+			return true
+		}
+	}
+
 	return false
 }
