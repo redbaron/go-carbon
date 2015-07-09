@@ -48,7 +48,7 @@ func main() {
 	app := carbon.New()
 
 	// only validate config
-	if err = app.Configure(cfg, true); err != nil {
+	if err = app.Configure(cfg, false); err != nil {
 		log.Fatal(err)
 	}
 
@@ -94,7 +94,7 @@ func main() {
 	}
 
 	// validate and APPLY settings
-	if err := app.Configure(cfg, false); err != nil {
+	if err := app.Configure(cfg, true); err != nil {
 		logrus.Fatal(err)
 		return
 	}

@@ -35,7 +35,7 @@ func New() *Carbon {
 }
 
 // Configure init or change carbon configuration
-func (app *Carbon) Configure(config *Config, checkOnly bool) error {
+func (app *Carbon) Configure(config *Config, apply bool) error {
 	app.Lock()
 	defer app.Unlock()
 
@@ -101,7 +101,7 @@ func (app *Carbon) Configure(config *Config, checkOnly bool) error {
 		return err
 	}
 
-	if checkOnly {
+	if !apply {
 		return nil
 	}
 
