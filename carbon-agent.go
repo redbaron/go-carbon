@@ -45,8 +45,10 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// parse schemas, aggregation
-	if err = cfg.Load(); err != nil {
+	app := carbon.New()
+
+	// only validate config
+	if err = app.Configure(cfg, true); err != nil {
 		log.Fatal(err)
 	}
 
@@ -78,7 +80,7 @@ func main() {
 		config.Daemonize(runAsUser, *pidfile)
 	}
 
-	logrus.SetLevel(logrus.DebugLevel)
+	// logrus.SetLevel(logrus.DebugLevel)
 
 	runtime.GOMAXPROCS(cfg.Common.MaxCPU)
 
@@ -91,8 +93,8 @@ func main() {
 		}()
 	}
 
-	app := carbon.New()
-	if err := app.Configure(cfg); err != nil {
+	// validate and APPLY settings
+	if err := app.Configure(cfg, false); err != nil {
 		logrus.Fatal(err)
 		return
 	}

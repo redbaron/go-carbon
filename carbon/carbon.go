@@ -35,7 +35,7 @@ func New() *Carbon {
 }
 
 // Configure init or change carbon configuration
-func (app *Carbon) Configure(config *Config) error {
+func (app *Carbon) Configure(config *Config, checkOnly bool) error {
 	app.Lock()
 	defer app.Unlock()
 
@@ -99,6 +99,10 @@ func (app *Carbon) Configure(config *Config) error {
 	}
 	if err = persisterSettings.LoadAndValidate(); err != nil {
 		return err
+	}
+
+	if checkOnly {
+		return nil
 	}
 
 	// apply all. Fail after all applied (if can)

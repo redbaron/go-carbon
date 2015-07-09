@@ -29,7 +29,7 @@ func NewTestConfig(rootDir string) *Config {
 
 func NewTestCarbon(config *Config) *Carbon {
 	carbon := New()
-	carbon.Configure(config)
+	carbon.Configure(config, false)
 	return carbon
 }
 
