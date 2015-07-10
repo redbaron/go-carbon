@@ -24,24 +24,19 @@ func newUDPTestCase(t *testing.T) *udpTestCase {
 		T: t,
 	}
 
-	addr, err := net.ResolveUDPAddr("udp", "localhost:0")
-	if err != nil {
-		t.Fatal(err)
-	}
+	var err error
 
 	test.rcvChan = points.NewChannel(128)
 	test.receiver = NewUDP(test.rcvChan)
-	// defer receiver.Stop()
 
-	if err = test.receiver.ListenUDP(addr); err != nil {
-		t.Fatal(err)
-	}
+	settings := test.receiver.Settings()
+	settings.ListenAddr = "localhost:0"
+	settings.Enabled = true
+	assert.NoError(test.T, settings.Apply())
 
 	test.conn, err = net.Dial("udp", test.receiver.Addr().String())
-	if err != nil {
-		t.Fatal(err)
-	}
-	// defer conn.Close()
+	assert.NoError(test.T, err)
+
 	time.Sleep(5 * time.Millisecond)
 
 	return test
@@ -50,7 +45,7 @@ func newUDPTestCase(t *testing.T) *udpTestCase {
 func (test *udpTestCase) EnableIncompleteLogging() *udpTestCase {
 	settings := test.receiver.Settings()
 	settings.LogIncomplete = true
-	settings.Apply()
+	assert.NoError(test.T, settings.Apply())
 	return test
 }
 

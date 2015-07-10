@@ -38,7 +38,8 @@ func (s *Settings) Validate() error {
 
 // Apply ...
 func (s *Settings) Apply() error {
-	if err := s.Validate(); err != nil {
+	var err error
+	if err = s.Validate(); err != nil {
 		return err
 	}
 
@@ -63,9 +64,24 @@ func (s *Settings) Apply() error {
 		obj.LogIncomplete = s.LogIncomplete
 	}
 
+	if s.Enabled != obj.Enabled {
+		logrus.Infof("[%s] Enabled changed: %#v -> %#v", rcv.TypeString(), obj.Enabled, s.Enabled)
+		obj.Enabled = s.Enabled
+	}
+
+	// @TODO: ListenAddr changed
+
+	if obj.Enabled && rcv.Addr() == nil { // start if stopped
+		err = rcv.start()
+	}
+
+	if !obj.Enabled && rcv.Addr() != nil { // stop if running
+		rcv.Stop()
+	}
+
 	changed := obj.changed
 	obj.changed = make(chan bool)
 	close(changed)
 
-	return nil
+	return err
 }

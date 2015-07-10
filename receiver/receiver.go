@@ -46,7 +46,7 @@ func new(out *points.Channel) *Receiver {
 	return rcv
 }
 
-// Addr returns binded socket address. For bind port 0 in tests
+// Addr returns binded socket address
 func (rcv *Receiver) Addr() net.Addr {
 	return rcv.addr
 }
@@ -54,6 +54,8 @@ func (rcv *Receiver) Addr() net.Addr {
 // Stop all listeners
 func (rcv *Receiver) Stop() {
 	close(rcv.exit)
+	rcv.addr = nil
+	rcv.exit = make(chan bool)
 }
 
 // TypeString return "udp", "tcp", "pickle"
@@ -67,6 +69,27 @@ func (rcv *Receiver) TypeString() string {
 		return "pickle"
 	}
 	return "unknown"
+}
+
+// Start listeners
+func (rcv *Receiver) start() error {
+	if rcv.rcvType == typeUDP {
+		udpAddr, err := net.ResolveUDPAddr("udp", rcv.settings.ListenAddr)
+		if err != nil {
+			return err
+		}
+		return rcv.ListenUDP(udpAddr)
+	}
+
+	if rcv.rcvType == typeTCP || rcv.rcvType == typePICKLE {
+		tcpAddr, err := net.ResolveTCPAddr("udp", rcv.settings.ListenAddr)
+		if err != nil {
+			return err
+		}
+		return rcv.ListenTCP(tcpAddr)
+	}
+
+	return nil
 }
 
 // doCheckpoint sends internal statistics to cache
