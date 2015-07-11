@@ -29,7 +29,7 @@ func NewTestCarbon(config *Config) (*Carbon, error) {
 var SchemasOK = `
 [default]
 pattern = .*
-retentions = 60s:30d
+retentions = 1s:10m
 `
 
 func writeSchemas(config *Config, content string) {

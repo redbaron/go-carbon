@@ -24,6 +24,7 @@ type Carbon struct {
 // New returns new instance of Carbon
 func New() *Carbon {
 	core := cache.New()
+	core.Start()
 
 	return &Carbon{
 		Cache:      core,

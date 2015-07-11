@@ -82,7 +82,7 @@ func (rcv *Receiver) start() error {
 	}
 
 	if rcv.rcvType == typeTCP || rcv.rcvType == typePICKLE {
-		tcpAddr, err := net.ResolveTCPAddr("udp", rcv.settings.ListenAddr)
+		tcpAddr, err := net.ResolveTCPAddr("tcp", rcv.settings.ListenAddr)
 		if err != nil {
 			return err
 		}

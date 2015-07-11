@@ -72,16 +72,22 @@ func (s *Settings) Apply() error {
 	// @TODO: ListenAddr changed
 
 	if obj.Enabled && rcv.Addr() == nil { // start if stopped
+		logrus.Debugf("[%s] Start listener", rcv.TypeString())
 		err = rcv.start()
 	}
 
 	if !obj.Enabled && rcv.Addr() != nil { // stop if running
+		logrus.Debugf("[%s] Stop listener", rcv.TypeString())
 		rcv.Stop()
 	}
 
 	changed := obj.changed
 	obj.changed = make(chan bool)
 	close(changed)
+
+	if err != nil {
+		logrus.Debugf("[%s] settings.Apply() error: %s", rcv.TypeString(), err.Error())
+	}
 
 	return err
 }
