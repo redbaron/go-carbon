@@ -1,6 +1,7 @@
 package carbon
 
 import (
+	"fmt"
 	"net"
 	"path"
 	"testing"
@@ -12,8 +13,41 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func checkPersisted(t *testing.T, successExpected bool, rootDir string, sendFunction func(p *points.Points)) {
+	assert := assert.New(t)
+	pointsCount := 100
+	metricName := points.RandomString(10)
+
+	ts := int64(time.Now().Unix())
+
+	for i := 0; i < pointsCount; i++ {
+		sendFunction(points.OnePoint(metricName, float64(i), ts-int64(i)))
+	}
+
+	time.Sleep(time.Second)
+
+	if successExpected {
+		wsp, err := whisper.Open(path.Join(rootDir, fmt.Sprintf("%s.wsp", metricName)))
+		assert.NoError(err)
+
+		savedData, err := wsp.Fetch(int(ts)-pointsCount, int(ts))
+		assert.NoError(err)
+
+		assert.Equal(pointsCount, len(savedData.Values()))
+
+		for i, v := range savedData.Values() {
+			assert.Equal(pointsCount-1-i, v)
+		}
+	} else {
+		wsp, err := whisper.Open(path.Join(rootDir, fmt.Sprintf("%s.wsp", metricName)))
+		assert.Error(err)
+		assert.Nil(wsp)
+	}
+}
+
 func TestToggleWhisper(t *testing.T) {
 	assert := assert.New(t)
+
 	helper.Root(t, func(rootDir string) {
 
 		config := NewTestConfig(rootDir)
@@ -26,32 +60,27 @@ func TestToggleWhisper(t *testing.T) {
 		conn, err := net.Dial("tcp", app.TCP.Addr().String())
 		assert.NoError(err)
 
-		ts := int64(time.Now().Unix())
-
-		pointsCount := 100
-
-		for i := 0; i < pointsCount; i++ {
-			_, err := conn.Write(
-				[]byte(
-					points.OnePoint("metric1", float64(i), ts-int64(i)).String(),
-				),
-			)
+		checkPersisted(t, true, rootDir, func(p *points.Points) {
+			_, err := conn.Write([]byte(p.String()))
 			assert.NoError(err)
-		}
+		})
 
-		time.Sleep(time.Second)
+		conn.Close()
 
-		wsp, err := whisper.Open(path.Join(rootDir, "metric1.wsp"))
+		// disable persister and try again
+		config.Whisper.Enabled = false
+		err = app.Configure(config, true)
 		assert.NoError(err)
 
-		savedData, err := wsp.Fetch(int(ts)-pointsCount, int(ts))
+		conn, err = net.Dial("tcp", app.TCP.Addr().String())
 		assert.NoError(err)
 
-		assert.Equal(pointsCount, len(savedData.Values()))
+		checkPersisted(t, false, rootDir, func(p *points.Points) {
+			_, err := conn.Write([]byte(p.String()))
+			assert.NoError(err)
+		})
 
-		for i, v := range savedData.Values() {
-			assert.Equal(pointsCount-1-i, v)
-		}
+		conn.Close()
 
 	})
 }
