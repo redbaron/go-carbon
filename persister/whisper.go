@@ -97,12 +97,13 @@ func (p *Whisper) store(values *points.Points) {
 func (p *Whisper) worker(inChannel *points.Channel, exit *Exit) {
 	in, inChanged := inChannel.Out()
 
+LOOP:
 	for {
 		select {
 		// confirm exit and exit
 		case <-exit.C:
 			exit.Done()
-			break
+			break LOOP
 		// input channel resized
 		case <-inChanged:
 			in, inChanged = inChannel.Out()
@@ -218,6 +219,9 @@ func (p *Whisper) statWorker(exit chan bool) {
 
 // Start worker
 func (p *Whisper) Start() {
+	if !p.settings.Enabled {
+		return
+	}
 	exit := NewExit(1)
 
 	p.exit = exit
@@ -236,5 +240,8 @@ func (p *Whisper) Start() {
 
 // Stop worker
 func (p *Whisper) Stop() {
-	p.exit.Exit()
+	if p.exit != nil {
+		p.exit.Exit()
+	}
+	p.exit = nil
 }

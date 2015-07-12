@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func checkPersisted(t *testing.T, successExpected bool, rootDir string, sendFunction func(p *points.Points)) {
+func checkPersisted(t *testing.T, successExpected bool, app *Carbon, rootDir string, sendFunction func(p *points.Points)) {
 	assert := assert.New(t)
 	pointsCount := 100
 	metricName := points.RandomString(10)
@@ -42,6 +42,20 @@ func checkPersisted(t *testing.T, successExpected bool, rootDir string, sendFunc
 		wsp, err := whisper.Open(path.Join(rootDir, fmt.Sprintf("%s.wsp", metricName)))
 		assert.Error(err)
 		assert.Nil(wsp)
+
+		ch := app.Cache.Out().OutChan()
+		cnt := 0
+		for {
+			msg := <-ch
+			assert.Equal(metricName, msg.Metric)
+			for _, p := range msg.Data {
+				assert.Equal(cnt, p.Value)
+				cnt++
+			}
+			if cnt == pointsCount {
+				break
+			}
+		}
 	}
 }
 
@@ -60,7 +74,7 @@ func TestToggleWhisper(t *testing.T) {
 		conn, err := net.Dial("tcp", app.TCP.Addr().String())
 		assert.NoError(err)
 
-		checkPersisted(t, true, rootDir, func(p *points.Points) {
+		checkPersisted(t, true, app, rootDir, func(p *points.Points) {
 			_, err := conn.Write([]byte(p.String()))
 			assert.NoError(err)
 		})
@@ -75,7 +89,22 @@ func TestToggleWhisper(t *testing.T) {
 		conn, err = net.Dial("tcp", app.TCP.Addr().String())
 		assert.NoError(err)
 
-		checkPersisted(t, false, rootDir, func(p *points.Points) {
+		checkPersisted(t, false, app, rootDir, func(p *points.Points) {
+			_, err := conn.Write([]byte(p.String()))
+			assert.NoError(err)
+		})
+
+		conn.Close()
+
+		// enable persister
+		config.Whisper.Enabled = true
+		err = app.Configure(config, true)
+		assert.NoError(err)
+
+		conn, err = net.Dial("tcp", app.TCP.Addr().String())
+		assert.NoError(err)
+
+		checkPersisted(t, true, app, rootDir, func(p *points.Points) {
 			_, err := conn.Write([]byte(p.String()))
 			assert.NoError(err)
 		})

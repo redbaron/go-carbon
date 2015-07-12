@@ -77,24 +77,41 @@ func (s *Settings) IsChanged(other *Settings) bool {
 		return true
 	}
 
-	if len(s.schemas.Data) != len(other.schemas.Data) ||
-		len(s.aggregation.Data) != len(other.aggregation.Data) {
+	// schemas
+	if (s.schemas == nil) != (other.schemas == nil) {
 		return true
 	}
 
-	if !s.aggregation.Default.Eq(other.aggregation.Default) {
-		return true
-	}
-
-	for i := 0; i < len(s.schemas.Data); i++ {
-		if !s.schemas.Data[i].Eq(other.schemas.Data[i]) {
+	if s.schemas != nil {
+		if len(s.schemas.Data) != len(other.schemas.Data) {
 			return true
+		}
+
+		for i := 0; i < len(s.schemas.Data); i++ {
+			if !s.schemas.Data[i].Eq(other.schemas.Data[i]) {
+				return true
+			}
 		}
 	}
 
-	for i := 0; i < len(s.aggregation.Data); i++ {
-		if !s.aggregation.Data[i].Eq(other.aggregation.Data[i]) {
+	// aggregation
+	if (s.aggregation == nil) != (other.aggregation == nil) {
+		return true
+	}
+
+	if s.aggregation != nil {
+		if len(s.aggregation.Data) != len(other.aggregation.Data) {
 			return true
+		}
+
+		if !s.aggregation.Default.Eq(other.aggregation.Default) {
+			return true
+		}
+
+		for i := 0; i < len(s.aggregation.Data); i++ {
+			if !s.aggregation.Data[i].Eq(other.aggregation.Data[i]) {
+				return true
+			}
 		}
 	}
 
