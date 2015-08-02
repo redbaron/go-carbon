@@ -161,6 +161,11 @@ func SetFile(filename string) error {
 	return std.Open(filename)
 }
 
+// GetFile returns current filename
+func GetFile() string {
+	return std.Filename()
+}
+
 // SetLevel for default logger
 func SetLevel(lvl string) error {
 	level, err := logrus.ParseLevel(lvl)

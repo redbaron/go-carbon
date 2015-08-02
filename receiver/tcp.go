@@ -24,7 +24,7 @@ func NewTCP(out *points.Channel) *Receiver {
 // NewPickle create new instance of Receiver with pickle listener enabled
 func NewPickle(out *points.Channel) *Receiver {
 	rcv := new(out)
-	rcv.rcvType = typePICKLE
+	rcv.rcvType = typePickle
 	return rcv
 }
 
@@ -147,7 +147,7 @@ func (rcv *Receiver) ListenTCP(addr *net.TCPAddr) error {
 	}()
 
 	handler := rcv.handleTCP
-	if rcv.rcvType == typePICKLE {
+	if rcv.rcvType == typePickle {
 		handler = rcv.handlePickle
 	}
 

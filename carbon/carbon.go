@@ -40,12 +40,14 @@ func (app *Carbon) Configure(config *Config, apply bool) error {
 	app.Lock()
 	defer app.Unlock()
 
+	var graphPrefix string
+
 	// carbon-cache prefix
 	if hostname, err := os.Hostname(); err == nil {
 		hostname = strings.Replace(hostname, ".", "_", -1)
-		config.Common.GraphPrefix = strings.Replace(config.Common.GraphPrefix, "{host}", hostname, -1)
+		graphPrefix = strings.Replace(config.Common.GraphPrefix, "{host}", hostname, -1)
 	} else {
-		config.Common.GraphPrefix = strings.Replace(config.Common.GraphPrefix, "{host}", "localhost", -1)
+		graphPrefix = strings.Replace(config.Common.GraphPrefix, "{host}", "localhost", -1)
 	}
 
 	cacheSettings := app.Cache.Settings()
@@ -55,27 +57,27 @@ func (app *Carbon) Configure(config *Config, apply bool) error {
 	persisterSettings := persister.NewSettings()
 
 	// core settings
-	cacheSettings.GraphPrefix = config.Common.GraphPrefix
+	cacheSettings.GraphPrefix = graphPrefix
 	cacheSettings.InputCapacity = config.Cache.InputBuffer
 	cacheSettings.MaxSize = config.Cache.MaxSize
 
 	// listeners settings
-	udpSettings.GraphPrefix = config.Common.GraphPrefix
+	udpSettings.GraphPrefix = graphPrefix
 	udpSettings.Enabled = config.UDP.Enabled
 	udpSettings.LogIncomplete = config.UDP.LogIncomplete
 	udpSettings.ListenAddr = config.UDP.Listen
 
-	tcpSettings.GraphPrefix = config.Common.GraphPrefix
+	tcpSettings.GraphPrefix = graphPrefix
 	tcpSettings.Enabled = config.TCP.Enabled
 	tcpSettings.ListenAddr = config.TCP.Listen
 
-	pickleSettings.GraphPrefix = config.Common.GraphPrefix
+	pickleSettings.GraphPrefix = graphPrefix
 	pickleSettings.Enabled = config.Pickle.Enabled
 	pickleSettings.ListenAddr = config.Pickle.Listen
 
 	// persister
 	persisterSettings.Enabled = config.Whisper.Enabled
-	persisterSettings.GraphPrefix = config.Common.GraphPrefix
+	persisterSettings.GraphPrefix = graphPrefix
 	persisterSettings.RootPath = config.Whisper.DataDir
 	persisterSettings.Workers = config.Whisper.Workers
 	persisterSettings.MaxUpdatesPerSecond = config.Whisper.MaxUpdatesPerSecond
@@ -121,13 +123,7 @@ func (app *Carbon) Configure(config *Config, apply bool) error {
 	}
 
 	// if persister settings changed RESTART THEM
-	if app.Persister == nil || app.Persister.Settings().IsChanged(persisterSettings) {
-		if app.Persister != nil {
-			app.Persister.Stop()
-		}
-		app.Persister = persister.NewWhisper(app.Cache.Out(), persisterSettings)
-		app.Persister.Start()
-	}
+	app.Persister = persister.Respawn(app.Persister, persisterSettings, app.Cache.Out())
 
 	return err
 }

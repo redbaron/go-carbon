@@ -14,7 +14,7 @@ type rcvType int
 const (
 	typeTCP rcvType = 1 + iota
 	typeUDP
-	typePICKLE
+	typePickle
 )
 
 // Receiver is base receiver
@@ -65,7 +65,7 @@ func (rcv *Receiver) TypeString() string {
 		return "tcp"
 	case typeUDP:
 		return "udp"
-	case typePICKLE:
+	case typePickle:
 		return "pickle"
 	}
 	return "unknown"
@@ -81,7 +81,7 @@ func (rcv *Receiver) start() error {
 		return rcv.ListenUDP(udpAddr)
 	}
 
-	if rcv.rcvType == typeTCP || rcv.rcvType == typePICKLE {
+	if rcv.rcvType == typeTCP || rcv.rcvType == typePickle {
 		tcpAddr, err := net.ResolveTCPAddr("tcp", rcv.settings.ListenAddr)
 		if err != nil {
 			return err
@@ -93,7 +93,12 @@ func (rcv *Receiver) start() error {
 }
 
 // doCheckpoint sends internal statistics to cache
-func (rcv *Receiver) doCheckpoint(statChan chan<- *points.Points, graphPrefix string) {
+func (rcv *Receiver) doCheckpoint() {
+	rcv.settings.RLock()
+	graphPrefix := rcv.settings.GraphPrefix
+	rcv.settings.RUnlock()
+
+	statChan := rcv.out.InChan()
 	protocolPrefix := rcv.TypeString()
 
 	stat := func(metric string, value float64) {
@@ -110,7 +115,7 @@ func (rcv *Receiver) doCheckpoint(statChan chan<- *points.Points, graphPrefix st
 	statAtomicUint32("metricsReceived", &rcv.metricsReceived)
 	statAtomicUint32("errors", &rcv.errors)
 
-	if rcv.rcvType == typeTCP || rcv.rcvType == typePICKLE {
+	if rcv.rcvType == typeTCP || rcv.rcvType == typePickle {
 		stat("active", float64(atomic.LoadInt32(&rcv.active)))
 	}
 
@@ -123,33 +128,26 @@ func (rcv *Receiver) checkpointWorker() {
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
 
-	var graphPrefix string
 	var settingsChanged chan bool
 
 	refreshSettings := func() {
+		// empty now. skeleton for changeable checkpoint interval
 		rcv.settings.RLock()
 		defer rcv.settings.RUnlock()
 
 		settingsChanged = rcv.settings.changed
-		graphPrefix = rcv.settings.GraphPrefix
 	}
 
 	refreshSettings()
 
-	out, outChanged := rcv.out.In()
-
 	for {
 		select {
 		case <-ticker.C:
-			rcv.doCheckpoint(out, graphPrefix)
+			rcv.doCheckpoint()
 
 		// settings updated
 		case <-settingsChanged:
 			refreshSettings()
-
-		// changed output channel
-		case <-outChanged:
-			out, outChanged = rcv.out.In()
 
 		case <-rcv.exit:
 			return

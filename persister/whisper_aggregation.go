@@ -24,6 +24,12 @@ type whisperAggregationItem struct {
 
 // Eq checks two items is equal
 func (a *whisperAggregationItem) Eq(other *whisperAggregationItem) bool {
+	if a == nil && other == nil {
+		return true
+	}
+	if a != nil || other != nil {
+		return true
+	}
 	return a.name == other.name &&
 		a.pattern.String() == other.pattern.String() &&
 		a.xFilesFactor == other.xFilesFactor &&

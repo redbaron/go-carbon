@@ -5,8 +5,11 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
 	"os/user"
 	"runtime"
+	"syscall"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/lomik/go-carbon/carbon"
@@ -98,6 +101,63 @@ func main() {
 		logrus.Fatal(err)
 		return
 	}
+
+	reload := func() {
+		cfg := carbon.NewConfig()
+
+		var err error
+
+		if err = config.Parse(cfg); err != nil {
+			logrus.Errorf("[reload] config read failed: %s", err.Error())
+			return
+		}
+
+		// validate config
+		if err = app.Configure(cfg, false); err != nil {
+			logrus.Errorf("[reload] config validation failed: %s", err.Error())
+			return
+		}
+
+		// change logfile
+		currentLogFile := logging.GetFile()
+		if currentLogFile != cfg.Common.Logfile {
+			err = logging.SetFile(cfg.Common.Logfile)
+
+			// rollback to old filename
+			if err != nil {
+				logging.SetFile(currentLogFile)
+				logrus.Errorf("[reload] set logfile %#v: %s", cfg.Common.Logfile, err.Error())
+			}
+		}
+
+		// apply config
+		if err := app.Configure(cfg, true); err != nil {
+			logrus.Errorf("[reload] config apply error: %s", err.Error())
+			return
+		}
+
+		// apply MaxCPU
+		runtime.GOMAXPROCS(cfg.Common.MaxCPU)
+
+		logrus.Info("[reload] ok")
+	}
+
+	signalWorker := func(signalChan chan os.Signal) {
+		for {
+			select {
+			case sig := <-signalChan:
+				switch sig {
+				case syscall.SIGHUP:
+					logrus.Info("HUP received. Reload config...")
+					reload()
+				}
+			}
+		}
+	}
+
+	signalChan := make(chan os.Signal, 10)
+	signal.Notify(signalChan, syscall.SIGHUP)
+	go signalWorker(signalChan)
 
 	logrus.Info("go-carbon started")
 	select {}

@@ -207,10 +207,11 @@ func (p *Whisper) statWorker(exit chan bool) {
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
 
+LOOP:
 	for {
 		select {
 		case <-exit:
-			break
+			break LOOP
 		case <-ticker.C:
 			go p.doCheckpoint()
 		}

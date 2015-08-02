@@ -197,8 +197,12 @@ func (c *Channel) Resize(newSize int) {
 	c.Lock()
 	defer c.Unlock()
 
-	c.size = newSize
+	if newSize == c.size {
+		// unchanged
+		return
+	}
 
+	c.size = newSize
 	c.apply()
 }
 
@@ -206,6 +210,11 @@ func (c *Channel) Resize(newSize int) {
 func (c *Channel) Throttle(ratePerSec int) {
 	c.Lock()
 	defer c.Unlock()
+
+	if ratePerSec == c.ratePerSec {
+		// unchanged
+		return
+	}
 
 	c.ratePerSec = ratePerSec
 	c.apply()
