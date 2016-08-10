@@ -11,18 +11,23 @@ import (
 	"github.com/Sirupsen/logrus"
 )
 
-type queue []*points.Points
+type queueItem struct {
+	p  *points.Points
+	ts int64
+}
+
+type queue []queueItem
 
 type byLength queue
 type byTimestamp queue
 
 func (v byLength) Len() int           { return len(v) }
 func (v byLength) Swap(i, j int)      { v[i], v[j] = v[j], v[i] }
-func (v byLength) Less(i, j int) bool { return len(v[i].Data) < len(v[j].Data) }
+func (v byLength) Less(i, j int) bool { return len(v[i].p.Data) < len(v[j].p.Data) }
 
 func (v byTimestamp) Len() int           { return len(v) }
 func (v byTimestamp) Swap(i, j int)      { v[i], v[j] = v[j], v[i] }
-func (v byTimestamp) Less(i, j int) bool { return v[i].Data[0].Timestamp > v[j].Data[0].Timestamp }
+func (v byTimestamp) Less(i, j int) bool { return v[i].ts > v[j].ts }
 
 type WriteStrategy int
 
@@ -104,9 +109,9 @@ func (c *Cache) getNext() *points.Points {
 	if size == 0 {
 		return nil
 	}
-	values := c.queue[size-1]
+	item := c.queue[size-1]
 	c.queue = c.queue[:size-1]
-	return values
+	return item.p
 }
 
 func (c *Cache) getAny() *points.Points {
@@ -180,9 +185,10 @@ func (c *Cache) Size() int {
 func (c *Cache) stat(metric string, value float64) {
 	key := fmt.Sprintf("%scache.%s", c.graphPrefix, metric)
 
-	p := points.OnePoint(key, value, time.Now().Unix())
+	ts := time.Now().Unix()
+	p := points.OnePoint(key, value, ts)
 	c.Add(p)
-	c.queue = append(c.queue, p)
+	c.queue = append(c.queue, queueItem{p, ts})
 }
 
 func (c *Cache) updateQueue() {
@@ -190,7 +196,7 @@ func (c *Cache) updateQueue() {
 	newQueue := c.queue[:0]
 
 	for _, values := range c.data {
-		newQueue = append(newQueue, values)
+		newQueue = append(newQueue, queueItem{values, values.Data[0].Timestamp})
 	}
 
 	switch c.writeStrategy {
