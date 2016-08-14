@@ -58,7 +58,6 @@ type whisperConfig struct {
 
 type cacheConfig struct {
 	MaxSize       uint32 `toml:"max-size"`
-	InputBuffer   int    `toml:"input-buffer"`
 	WriteStrategy string `toml:"write-strategy"`
 }
 
@@ -134,7 +133,6 @@ func NewConfig() *Config {
 		},
 		Cache: cacheConfig{
 			MaxSize:       1000000,
-			InputBuffer:   51200,
 			WriteStrategy: "max",
 		},
 		Udp: udpConfig{
