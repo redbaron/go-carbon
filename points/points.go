@@ -24,6 +24,11 @@ type Points struct {
 	Data   []Point
 }
 
+type SinglePoint struct {
+	Metric string
+	Point  Point
+}
+
 // New creates new instance of Points
 func New() *Points {
 	return &Points{}
@@ -57,11 +62,11 @@ func (p *Points) Copy() *Points {
 
 // ParseText parse text protocol Point
 //  host.Point.value 42 1422641531\n
-func ParseText(line string) (*Points, error) {
+func ParseText(line string) (SinglePoint, error) {
 
 	row := strings.Split(strings.Trim(line, "\n \t\r"), " ")
 	if len(row) != 3 {
-		return nil, fmt.Errorf("bad message: %#v", line)
+		return SinglePoint{}, fmt.Errorf("bad message: %#v", line)
 	}
 
 	// 0x2e == ".". Or use split? @TODO: benchmark
@@ -72,13 +77,13 @@ func ParseText(line string) (*Points, error) {
 	value, err := strconv.ParseFloat(row[1], 64)
 
 	if err != nil || math.IsNaN(value) {
-		return nil, fmt.Errorf("bad message: %#v", line)
+		return SinglePoint{}, fmt.Errorf("bad message: %#v", line)
 	}
 
 	tsf, err := strconv.ParseFloat(row[2], 64)
 
 	if err != nil || math.IsNaN(tsf) {
-		return nil, fmt.Errorf("bad message: %#v", line)
+		return SinglePoint{}, fmt.Errorf("bad message: %#v", line)
 	}
 
 	// 315522000 == "1980-01-01 00:00:00"
@@ -92,7 +97,7 @@ func ParseText(line string) (*Points, error) {
 	// 	return nil, fmt.Errorf("bad message: %#v", line)
 	// }
 
-	return OnePoint(row[0], value, int64(tsf)), nil
+	return SinglePoint{row[0], Point{value, int64(tsf)}}, nil
 }
 
 // ParsePickle ...

@@ -196,7 +196,7 @@ func RestoreFromFile(filename string, cache *cache.Cache) error {
 				logrus.Warnf("[restore] wrong message %#v", string(line))
 			} else {
 				pointsCount++
-				cache.Add(p)
+				cache.AddSinglePoint(p)
 			}
 		}
 	}
