@@ -29,16 +29,14 @@ type Cache struct {
 	cacheStats    cacheStats
 	maxSize       uint32
 	numPersisters int
-	queryChan     chan *Query // from carbonlink
 	dispatchChan  chan []*points.Points
 }
 
 // New create Cache instance and run in/out goroutine
 func New() *Cache {
 	cache := &Cache{
-		data:      cmap.New(),
-		maxSize:   1000000,
-		queryChan: make(chan *Query, 16),
+		data:    cmap.New(),
+		maxSize: 1000000,
 	}
 
 	cache.queue = NewQueue(&cache.data, &cache.cacheStats)
@@ -174,14 +172,6 @@ MAIN_LOOP:
 		select {
 		case <-c.queue.writeoutCompleteChan:
 		case <-ticker.C: // ticker is here to kick off queue update and writeout
-
-		case query := <-c.queryChan: // carbonlink
-			atomic.AddUint32(&c.cacheStats.queryCnt, 1)
-			if v, ok := c.GetMetric(query.Metric); ok {
-				query.CacheData = v
-			}
-			close(query.Wait)
-
 		case <-exitChan: // exit
 			break MAIN_LOOP
 		}
@@ -190,11 +180,6 @@ MAIN_LOOP:
 
 func (c *Cache) Out() <-chan []*points.Points {
 	return c.dispatchChan
-}
-
-// Query returns carbonlink query channel
-func (c *Cache) Query() chan *Query {
-	return c.queryChan
 }
 
 // Start worker
